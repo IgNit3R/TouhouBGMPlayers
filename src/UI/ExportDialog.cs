@@ -43,6 +43,8 @@ public static class ExportDialog
         {
             Height = Math.Min(150, 26 + items.Count * 20),
             Background = Box, Foreground = Fg, BorderBrush = Bd,
+            // 曲名是日文内容，用曲名字体（对话框其余部分是中文 UI 字体）
+            FontFamily = Theme.UserContentFontFamily ?? Theme.UserFontFamily,
             ItemsSource = items.Select(x => $"{x.Game.Code} - {x.Track.No:00} - {x.Track.Title}").ToList(),
         };
 

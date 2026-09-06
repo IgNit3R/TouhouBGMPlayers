@@ -109,6 +109,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
+        Theme.ApplyUserFont(this);   // 用户字体（XAML 里写的是默认链）
 
         foreach (var g in TrackIndex.Games)
         {
@@ -309,19 +310,50 @@ public partial class SettingsWindow : Window
 
     private void LoadUi()
     {
-        var want = AppSettings.Current.Ui.FontFamily;
-        int idx = 0;
+        FillFontCombo(FontCombo, AppSettings.Current.Ui.FontFamily);
+        FillFontCombo(ContentFontCombo, AppSettings.Current.Ui.ContentFontFamily);
+    }
 
-        for (int i = 0; i < FontCombo.Items.Count; i++)
+    /// <summary>
+    /// 把「默认回退链 + 系统已安装字体」填进下拉并回选已保存的值。
+    /// 条目统一用界面字体显示名称（图标字体自渲染会把名字画成符号）。
+    /// 旧版预设存的是回退链：整条等于默认链 → 默认项，否则按首字体名迁移。
+    /// </summary>
+    private static void FillFontCombo(ComboBox combo, string? saved)
+    {
+        combo.Items.Clear();
+
+        var def = new ComboBoxItem
         {
-            if (FontCombo.Items[i] is ComboBoxItem item &&
-                string.Equals(item.Tag as string, want, StringComparison.OrdinalIgnoreCase))
+            Content = "默认（Yu Gothic UI → Meiryo UI → Microsoft YaHei UI）",
+            Tag = UiSettings.DefaultFontChain,
+        };
+        combo.Items.Add(def);
+        combo.SelectedItem = def;
+
+        foreach (var name in System.Windows.Media.Fonts.SystemFontFamilies
+                                           .Select(f => f.Source)
+                                           .Distinct(StringComparer.OrdinalIgnoreCase)
+                                           .OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
+        {
+            combo.Items.Add(new ComboBoxItem { Content = name, Tag = name });
+        }
+
+        if (string.Equals(saved, UiSettings.DefaultFontChain, StringComparison.OrdinalIgnoreCase))
+        {
+            combo.SelectedItem = def;
+            return;
+        }
+
+        var first = (saved ?? "").Split(',')[0].Trim();
+        foreach (ComboBoxItem item in combo.Items)
+        {
+            if (string.Equals(item.Tag as string, first, StringComparison.OrdinalIgnoreCase))
             {
-                idx = i;
+                combo.SelectedItem = item;
                 break;
             }
         }
-        FontCombo.SelectedIndex = idx;
     }
 
     private void FontCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -331,6 +363,14 @@ public partial class SettingsWindow : Window
         AppSettings.Current.Ui.FontFamily = tag;
         // 写全名：本类有个同名属性 FontFamily，避免解析歧义
         FontFamily = new System.Windows.Media.FontFamily(tag);   // 立刻预览
+    }
+
+    private void ContentFontCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ContentFontCombo.SelectedItem is not ComboBoxItem { Tag: string tag }) return;
+
+        AppSettings.Current.Ui.ContentFontFamily = tag;
+        ContentFontSample.FontFamily = new System.Windows.Media.FontFamily(tag);   // 样张立刻预览
     }
 
     // ---------- 数值解析 ----------

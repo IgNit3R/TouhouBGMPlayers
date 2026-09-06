@@ -60,6 +60,9 @@ public sealed class ExportSettings
 /// <summary>窗口与外观。</summary>
 public sealed class UiSettings
 {
+    /// <summary>界面字体的默认回退链（日文显示优先，系统缺字体时按逗号依次回退）。</summary>
+    public const string DefaultFontChain = "Yu Gothic UI, Meiryo UI, Microsoft YaHei UI";
+
     [JsonPropertyName("width")] public double Width { get; set; } = 1040;
     [JsonPropertyName("height")] public double Height { get; set; } = 720;
     [JsonPropertyName("left")] public double? Left { get; set; }
@@ -67,11 +70,25 @@ public sealed class UiSettings
     [JsonPropertyName("maximized")] public bool Maximized { get; set; }
 
     /// <summary>
-    /// UI 字体。默认把 Yu Gothic UI 排在最前，保证日文曲名显示正常；
-    /// 系统缺字体时会按逗号依次回退。
+    /// UI 字体（中文界面文本）。可以是单个字体名，也可以是逗号分隔的回退链。
     /// </summary>
-    [JsonPropertyName("fontFamily")] public string FontFamily { get; set; } =
-        "Yu Gothic UI, Meiryo UI, Microsoft YaHei UI";
+    [JsonPropertyName("fontFamily")] public string FontFamily { get; set; } = DefaultFontChain;
+
+    /// <summary>
+    /// 曲名字体（日文内容：曲目表、正在播放区、导出清单里的曲名与作品名）。
+    /// 与界面字体分开 —— 中文字体与日文字体的擅长区不同，各选各的。
+    /// </summary>
+    [JsonPropertyName("contentFontFamily")] public string ContentFontFamily { get; set; } = DefaultFontChain;
+
+    /// <summary>
+    /// 【预留入口，未实现】从字体文件（.ttf / .otf / .ttc）加载界面字体。
+    /// 将来实现时的要点，先记在这里：
+    ///   · 显示名要从文件里读（GlyphTypeface.FamilyName）；.ttc 是多家族合集，需枚举
+    ///   · 引用形式：new FontFamily(new Uri("file:///…"), "FamilyName")
+    ///   · 文件丢失 / 被移动时要静默回退到 FontFamily，不能让程序起不来
+    ///   · 非空时优先于 FontFamily
+    /// </summary>
+    [JsonPropertyName("fontFile")] public string? FontFile { get; set; }
 }
 
 /// <summary>最近播放，用于启动时恢复。</summary>

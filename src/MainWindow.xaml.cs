@@ -223,11 +223,16 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 界面字体（中文 UI）套整个窗口；曲名字体（日文内容）只套三处：
+    /// 曲目表 + 正在播放的两行日文。参数行保持 Consolas 不动。
+    /// </summary>
     private void ApplyFont()
     {
-        var s = AppSettings.Current.Ui.FontFamily;
-        if (!string.IsNullOrWhiteSpace(s))
-            FontFamily = new System.Windows.Media.FontFamily(s);
+        Theme.ApplyUserFont(this);
+        Theme.ApplyContentFont(TrackGrid);
+        Theme.ApplyContentFont(NowPlayingText);
+        Theme.ApplyContentFont(NowPlayingGame);
     }
 
     // ---------- 列表 ----------

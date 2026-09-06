@@ -239,21 +239,25 @@
             <TabItem Header="外观">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10">
-                        <TextBlock Text="界面字体" Margin="0,0,0,8"/>
+                        <TextBlock Text="界面字体（中文 UI）" Margin="0,0,0,8"/>
+                        <!-- 条目在代码里填充：默认回退链 + 系统全部已安装字体 -->
                         <ComboBox x:Name="FontCombo" Width="380" HorizontalAlignment="Left" Height="26"
                                   VerticalContentAlignment="Center"
-                                  SelectionChanged="FontCombo_SelectionChanged">
-                            <ComboBoxItem Content="Yu Gothic UI（推荐，日文显示最佳）"
-                                          Tag="Yu Gothic UI, Meiryo UI, Microsoft YaHei UI"/>
-                            <ComboBoxItem Content="Meiryo UI"
-                                          Tag="Meiryo UI, Yu Gothic UI, Microsoft YaHei UI"/>
-                            <ComboBoxItem Content="Microsoft YaHei UI"
-                                          Tag="Microsoft YaHei UI, Yu Gothic UI"/>
-                            <ComboBoxItem Content="MS Gothic"
-                                          Tag="MS Gothic, Yu Gothic UI"/>
-                        </ComboBox>
-                        <TextBlock Text="影响曲名等日文文本的显示。系统缺字体时按逗号顺序回退。"
-                                   Margin="0,6,0,0" Foreground="{StaticResource TextFaint}"/>
+                                  IsTextSearchEnabled="True" TextSearch.TextPath="Content"
+                                  SelectionChanged="FontCombo_SelectionChanged"/>
+                        <TextBlock Text="菜单、按钮、设置页等界面文本。选中立即预览，键盘输入可跳转。"
+                                   Margin="0,6,0,0" Foreground="{StaticResource TextFaint}" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="曲名字体（日文内容）" Margin="0,22,0,8"/>
+                        <ComboBox x:Name="ContentFontCombo" Width="380" HorizontalAlignment="Left" Height="26"
+                                  VerticalContentAlignment="Center"
+                                  IsTextSearchEnabled="True" TextSearch.TextPath="Content"
+                                  SelectionChanged="ContentFontCombo_SelectionChanged"/>
+                        <!-- 日文样张：选中即在下面这行预览实际效果 -->
+                        <TextBlock x:Name="ContentFontSample" Margin="0,8,0,0" FontSize="14"
+                                   Text="亡き王女の為のセプテット / ネクロファンタジア / 上海紅茶館"/>
+                        <TextBlock Text="曲目表与正在播放区的曲名、作品名。缺字形时系统会自动回退。"
+                                   Margin="0,6,0,0" Foreground="{StaticResource TextFaint}" TextWrapping="Wrap"/>
 
                         <TextBlock Text="窗口" Margin="0,26,0,8" FontWeight="SemiBold"/>
                         <TextBlock Text="尺寸与位置会随其他设置一起存进 settings.json，下次启动自动恢复。"
