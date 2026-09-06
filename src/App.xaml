@@ -1,0 +1,19 @@
+﻿<Application x:Class="ThbgmPlayer.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:ThbgmPlayer"
+             StartupUri="MainWindow.xaml">
+    <!--
+    主题统一放 Themes/DarkTheme.xaml，在应用级合并。
+    放这里而不是各窗口的 Resources，是为了让下拉弹层、以及
+    用代码搭的对话框（PromptDialog / ExportDialog）也能拿到同一套画刷 ——
+    Popup 的内容在另一棵可视化树上，窗口级资源不一定能继承到。
+    -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/DarkTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

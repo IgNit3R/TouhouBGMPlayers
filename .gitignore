@@ -1,0 +1,24 @@
+# ── 构建产物（dotnet build 的输出，随时可再生成）──
+# bin\Debug\net10.0-windows\ 这种结构：输出根 \ 配置 \ 目标框架(TFM)
+[Bb]in/
+[Oo]bj/
+*.user
+
+# Visual Studio 的本地状态（与构建无关）
+.vs/
+*.suo
+
+# 运行时数据（settings.json / favorites.json / playlists.json / export\
+# 都写在 exe 旁，已随 bin\ 一并忽略，无需单列）
+
+# WorkBuddy 会话残留（真正的项目记忆在 thworks 根的那份）
+.workbuddy/
+
+# 游戏提取的原始素材（musiccmt / fmt / dat / mid 等）：游戏资产有版权，
+# 公开仓库不能放；它们是随时可从游戏重新生成的提取件，不属于必须入库的资料
+data/source/
+
+# ── 以下都是构建输入或维护资料，必须被跟踪，勿加忽略规则 ──
+# src\                        源码 + csproj + Resources\tracks.json.gz（内嵌索引）
+# assets\icon\bgmplayer.ico   唯一的 src 外编译输入（csproj 相对路径引用）
+# data\（除 source\） design\ docs\ tools\   索引再生成链与维护脚本

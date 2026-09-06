@@ -1,0 +1,253 @@
+﻿<Window x:Class="ThbgmPlayer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="东方ProjectBGM播放器"
+        Icon="Resources/bgmplayer.ico"
+        Width="1040" Height="720"
+        MinWidth="860" MinHeight="600"
+        Background="{StaticResource BgDeep}"
+        Foreground="{StaticResource Text}"
+        FontFamily="Yu Gothic UI, Meiryo UI, Microsoft YaHei UI"
+        FontSize="13"
+        PreviewKeyDown="Window_PreviewKeyDown">
+
+    <Window.Resources>
+        <!--
+        画刷与共享控件样式都在 Themes/DarkTheme.xaml（应用级）。
+        这里只放本窗口专用的：表格网格线，以及比面板再亮一档的表头底色。
+
+        注意：不要在这里再写 Button / ComboBox / ComboBoxItem / MenuItem 的隐式样式 ——
+        窗口级样式会盖掉应用级的，主题就白做了（下拉框看不清、菜单有白边，根因都在这）。
+        -->
+        <SolidColorBrush x:Key="GridLine"    Color="#FF2B2B2C"/>
+        <SolidColorBrush x:Key="HeaderBg"    Color="#FF2A2A2C"/>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- 菜单栏 -->
+            <RowDefinition Height="Auto"/>   <!-- 播放列表选择 -->
+            <RowDefinition Height="*"/>      <!-- 曲目表 -->
+            <RowDefinition Height="Auto"/>   <!-- 进度条 -->
+            <RowDefinition Height="Auto"/>   <!-- 播放控件 -->
+            <RowDefinition Height="Auto"/>   <!-- 当前曲目信息 -->
+        </Grid.RowDefinitions>
+
+        <!-- ========== 菜单栏 ========== -->
+        <Menu Grid.Row="0" Background="{StaticResource BgDeep}"
+              Foreground="{StaticResource Text}" Padding="2">
+            <MenuItem Header="设置(_S)">
+                <MenuItem Header="路径…"        Click="SettingsPaths_Click"/>
+                <MenuItem Header="播放参数…"    Click="SettingsPlayback_Click"/>
+                <MenuItem Header="导出…"        Click="SettingsExport_Click"/>
+                <Separator/>
+                <MenuItem Header="外观…"        Click="SettingsUi_Click"/>
+            </MenuItem>
+            <MenuItem Header="播放列表(_L)">
+                <MenuItem Header="新建列表…"                    Click="PlaylistNew_Click"/>
+                <MenuItem x:Name="PlaylistRenameItem" Header="重命名当前列表…"
+                          Click="PlaylistRename_Click" IsEnabled="False"/>
+                <MenuItem x:Name="PlaylistDeleteItem" Header="删除当前列表…"
+                          Click="PlaylistDelete_Click" IsEnabled="False"/>
+            </MenuItem>
+            <MenuItem Header="帮助(_H)">
+                <MenuItem Header="关于" Click="About_Click"/>
+            </MenuItem>
+        </Menu>
+
+        <!-- ========== 播放列表选择 ========== -->
+        <Border Grid.Row="1" Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource Border}" BorderThickness="0,1" Padding="10,7">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="260"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="播放列表" VerticalAlignment="Center"
+                           Margin="0,0,10,0" Foreground="{StaticResource TextDim}"/>
+                <ComboBox Grid.Column="1" x:Name="PlaylistCombo"
+                          SelectionChanged="PlaylistCombo_SelectionChanged"
+                          VerticalContentAlignment="Center" Height="26"/>
+                <TextBlock Grid.Column="3" x:Name="PlaylistSummary"
+                           VerticalAlignment="Center" Foreground="{StaticResource TextDim}"/>
+            </Grid>
+        </Border>
+
+        <!-- ========== 曲目表 ========== -->
+        <!-- GridHost：框选矩形与排序指示线的覆盖层坐标系，鼠标事件都换算到它身上 -->
+        <Grid Grid.Row="2" x:Name="GridHost">
+        <DataGrid x:Name="TrackGrid"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  CanUserSortColumns="False"
+                  CanUserResizeColumns="True"
+                  CanUserReorderColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  SelectionMode="Extended"
+                  SelectionUnit="FullRow"
+                  GridLinesVisibility="Horizontal"
+                  HeadersVisibility="Column"
+                  Background="{StaticResource BgDeep}"
+                  AlternationCount="2"
+                  Foreground="{StaticResource Text}"
+                  BorderBrush="{StaticResource Border}"
+                  HorizontalGridLinesBrush="{StaticResource GridLine}"
+                  VerticalGridLinesBrush="{StaticResource GridLine}"
+                  SelectionChanged="TrackGrid_SelectionChanged"
+                  MouseDoubleClick="TrackGrid_MouseDoubleClick"
+                  ContextMenuOpening="TrackGrid_ContextMenuOpening"
+                  PreviewKeyDown="TrackGrid_PreviewKeyDown"
+                  PreviewMouseLeftButtonDown="TrackGrid_PreviewMouseLeftButtonDown"
+                  PreviewMouseMove="TrackGrid_PreviewMouseMove"
+                  PreviewMouseLeftButtonUp="TrackGrid_PreviewMouseLeftButtonUp">
+
+            <DataGrid.ColumnHeaderStyle>
+                <Style TargetType="DataGridColumnHeader">
+                    <Setter Property="Background" Value="{StaticResource HeaderBg}"/>
+                    <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+                    <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                    <Setter Property="Padding" Value="8,5"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                </Style>
+            </DataGrid.ColumnHeaderStyle>
+
+            <!--
+            行底色**全部**由触发器决定，不在 DataGrid 上设 RowBackground /
+            AlternatingRowBackground —— 那两个是 DataGrid 用本地值写到行容器上的，
+            优先级高于 Style 触发器，会把下面这些状态色压掉
+            （表现为播放高亮一闪就没）。
+            统一走触发器后，靠「后命中的生效」就能排出优先级。
+            -->
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Setter Property="Background" Value="{StaticResource BgDeep}"/>
+                    <Style.Triggers>
+                        <!-- 1. 斑马纹（AlternationCount=2） -->
+                        <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                            <Setter Property="Background" Value="{StaticResource BgAltRow}"/>
+                        </Trigger>
+                        <!-- 2. 未配置路径：文字转暗并降低透明度，底色不动 -->
+                        <DataTrigger Binding="{Binding IsAvailable}" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource TextFaint}"/>
+                            <Setter Property="Opacity" Value="0.55"/>
+                        </DataTrigger>
+                        <!-- 3. 正在播放：常驻底色，与选中态无关 -->
+                        <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                            <Setter Property="Background" Value="{StaticResource RowPlaying}"/>
+                        </DataTrigger>
+                        <!-- 4. 选中：放最后，压过前面所有底色 -->
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="{StaticResource Accent}"/>
+                            <Setter Property="Foreground" Value="{StaticResource AccentText}"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="作品" Binding="{Binding GameCode}" Width="72"  MinWidth="60"/>
+                <DataGridTextColumn Header="曲序" Binding="{Binding DisplayNo}" Width="56"  MinWidth="48"/>
+                <DataGridTextColumn Header="曲名" Binding="{Binding Title}"     Width="*"   MinWidth="240"/>
+                <DataGridTextColumn Header="时长" Binding="{Binding LengthText}" Width="86" MinWidth="70"/>
+                <DataGridTextColumn Header="循环" Binding="{Binding LoopText}"   Width="150" MinWidth="110"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- 框选矩形：跟随鼠标拖出的范围，命中行实时进选择集 -->
+        <Border x:Name="MarqueeRect" IsHitTestVisible="False" Visibility="Collapsed"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                BorderBrush="{StaticResource Accent}" BorderThickness="1"
+                Background="#2E0E639C"/>
+        <!-- 拖动排序的插入指示线：一条横线，落在目标行的上沿或下沿 -->
+        <Border x:Name="InsertLine" IsHitTestVisible="False" Visibility="Collapsed"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                Height="2" Background="{StaticResource Accent}"/>
+        </Grid>
+
+        <!-- ========== 进度条 ========== -->
+        <Border Grid.Row="3" Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="10,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Slider Grid.Column="0" x:Name="SeekBar" Minimum="0" Maximum="100" Value="0"
+                        IsEnabled="False" VerticalAlignment="Center"
+                        IsMoveToPointEnabled="True"
+                        ValueChanged="SeekBar_ValueChanged"
+                        Thumb.DragStarted="SeekBar_DragStarted"
+                        Thumb.DragCompleted="SeekBar_DragCompleted"/>
+                <TextBlock Grid.Column="1" x:Name="TimeText" Text="00:00 / 00:00"
+                           Margin="12,0,0,0" VerticalAlignment="Center"
+                           Foreground="{StaticResource TextDim}" FontFamily="Consolas"/>
+            </Grid>
+        </Border>
+
+        <!-- ========== 播放控件 ========== -->
+        <Border Grid.Row="4" Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="10,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <Button x:Name="PrevButton" Content="⏮ 上一首" Click="Prev_Click" IsEnabled="False" Margin="0,0,6,0"/>
+                    <Button x:Name="PlayButton" Content="▶ 播放"   Click="Play_Click" IsEnabled="False" Margin="0,0,6,0" MinWidth="90"/>
+                    <Button x:Name="NextButton" Content="⏭ 下一首" Click="Next_Click" IsEnabled="False"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="20,0,0,0">
+                    <TextBlock Text="循环" VerticalAlignment="Center" Margin="0,0,6,0"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox x:Name="LoopModeCombo" Width="96" IsEnabled="False"
+                              VerticalContentAlignment="Center" Height="26"
+                              SelectedIndex="0"
+                              SelectionChanged="LoopModeCombo_SelectionChanged">
+                        <ComboBoxItem Content="无限循环"/>
+                        <ComboBoxItem Content="普通"/>
+                        <ComboBoxItem Content="随机"/>
+                    </ComboBox>
+                    <Button x:Name="FavoriteButton" Content="♥ 收藏" Click="Favorite_Click"
+                            IsEnabled="False" Margin="14,0,0,0"/>
+                    <Button x:Name="AltButton" Content="霊界版" Click="Alt_Click"
+                            IsEnabled="False" MinWidth="78" Margin="6,0,0,0"
+                            ToolTip="切换到灵界版（仅 TH13 部分曲目可用）"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="3" Orientation="Horizontal">
+                    <TextBlock Text="音量" VerticalAlignment="Center" Margin="0,0,8,0"
+                               Foreground="{StaticResource TextDim}"/>
+                    <Slider x:Name="VolumeSlider" Width="110" Minimum="0" Maximum="1" Value="0.8"
+                            VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                            ValueChanged="VolumeSlider_ValueChanged"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ========== 当前曲目信息 ========== -->
+        <Border Grid.Row="5" Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="10,8">
+            <StackPanel>
+                <TextBlock x:Name="NowPlayingText" Text="未播放"
+                           FontSize="16" FontWeight="SemiBold"/>
+                <!-- 作品全名（含副标题），小字，色深与「霊界版」按钮禁用时一致 -->
+                <TextBlock x:Name="NowPlayingGame" Text=""
+                           FontSize="11" Margin="0,3,0,0"
+                           Foreground="{StaticResource TextFaint}"
+                           TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="NowPlayingDetail" Text="—"
+                           Foreground="{StaticResource TextDim}" Margin="0,3,0,0"
+                           FontFamily="Consolas"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

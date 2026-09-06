@@ -1,0 +1,278 @@
+﻿<Window x:Class="ThbgmPlayer.UI.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="设置"
+        Icon="Resources/bgmplayer.ico"
+        Width="920" Height="680"
+        MinWidth="780" MinHeight="540"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgDeep}"
+        Foreground="{StaticResource Text}"
+        FontFamily="Yu Gothic UI, Meiryo UI, Microsoft YaHei UI"
+        FontSize="13">
+
+    <Window.Resources>
+        <!--
+        画刷与共享控件样式都在 Themes/DarkTheme.xaml（应用级），这里不重复定义。
+        TabItem / MenuItem / Button / ComboBox 的样式都在那边 ——
+        窗口级隐式样式会盖掉应用级的，在这里再写一份就等于让主题失效。
+        -->
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="{StaticResource BgElevated}"/>
+            <Setter Property="Foreground" Value="{StaticResource Text}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource Text}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <!-- 一行作品路径 -->
+        <DataTemplate x:Key="PathRowTemplate">
+            <Grid Margin="0,3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="66"/>    <!-- 代号 -->
+                    <ColumnDefinition Width="*"/>     <!-- 路径 -->
+                    <ColumnDefinition Width="Auto"/>  <!-- 浏览 -->
+                    <ColumnDefinition Width="Auto"/>  <!-- 清除 -->
+                    <ColumnDefinition Width="190"/>   <!-- 校验状态 -->
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding Code}"
+                           VerticalAlignment="Center" FontWeight="SemiBold"/>
+
+                <TextBox Grid.Column="1" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="6,0" VerticalAlignment="Center"
+                         ToolTip="{Binding Hint}"/>
+
+                <Button Grid.Column="2" Content="浏览…" Margin="4,0,0,0"
+                        Click="Browse_Click" Tag="{Binding}"/>
+
+                <Button Grid.Column="3" Content="×" Margin="4,0,6,0" MinWidth="28" Padding="0"
+                        Click="Clear_Click" Tag="{Binding}" ToolTip="清除此路径"/>
+
+                <TextBlock Grid.Column="4" Text="{Binding StatusText}"
+                           Foreground="{Binding StatusBrush}"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding StatusText}"/>
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TabControl Grid.Row="0" x:Name="Tabs" Background="{StaticResource BgPanel}" BorderBrush="{StaticResource Border}">
+
+            <!-- ============ 路径 ============ -->
+            <TabItem Header="路径">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Margin="0,0,0,10" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextDim}">
+                        每部作品单独指定路径，不做自动扫描。
+                        <LineBreak/>
+                        常规作品请指到 <Run Foreground="{StaticResource Emphasis}">thbgm.dat</Run> 所在的目录；
+                        <Run Foreground="{StaticResource Emphasis}">TH06</Run> 请指到 <Run Foreground="{StaticResource Emphasis}">bgm</Run> 文件夹所在的目录（即包含 bgm 与 紅魔郷MD.DAT 的那一级）。
+                        <LineBreak/>
+                        改动后点「应用」才会校验并保存。
+                    </TextBlock>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="PathRows" ItemTemplate="{StaticResource PathRowTemplate}"/>
+                    </ScrollViewer>
+
+                    <TextBlock Grid.Row="2" x:Name="PathSummary" Margin="0,8,0,0"
+                               Foreground="{StaticResource TextDim}"/>
+                </Grid>
+            </TabItem>
+
+            <!-- ============ 播放参数 ============ -->
+            <TabItem Header="播放参数">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <TextBlock Foreground="{StaticResource TextDim}" TextWrapping="Wrap" Margin="0,0,0,18">
+                            时间线：<Run Foreground="{StaticResource Emphasis}">intro 一遍</Run><Run Text=" → "/><Run Foreground="{StaticResource Emphasis}">循环段 × N 次</Run><Run Text=" → "/><Run Foreground="{StaticResource Emphasis}">额外 X 秒</Run><Run Text=" → "/><Run Foreground="{StaticResource Emphasis}">淡出 F 秒</Run>
+                            <LineBreak/>
+                            额外 X 秒与淡出 F 秒播的都是循环段的内容，区别只是后者边播边把音量线性降到 0。
+                            <LineBreak/>
+                            无限循环模式下不使用 N / X / F。改动点「应用」后，正在播放的曲子会按新参数重建时间线，播放位置保持不变。
+                        </TextBlock>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150"/>
+                                <ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="循环模式" VerticalAlignment="Center"/>
+                            <ComboBox Grid.Row="0" Grid.Column="1" x:Name="ModeCombo" Height="26"
+                                      VerticalContentAlignment="Center">
+                                <ComboBoxItem Content="无限循环"/>
+                                <ComboBoxItem Content="普通"/>
+                                <ComboBoxItem Content="随机"/>
+                            </ComboBox>
+                            <TextBlock Grid.Row="0" Grid.Column="2" Text="普通与随机的每首播法相同，区别只在下一首怎么挑"
+                                       VerticalAlignment="Center" Margin="12,0,0,0"
+                                       Foreground="{StaticResource TextFaint}"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="循环次数 N" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="LoopCountBox" Margin="0,10,0,0" Height="26"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Text="循环段重复几遍"
+                                       VerticalAlignment="Center" Margin="12,10,0,0"
+                                       Foreground="{StaticResource TextFaint}"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="额外秒数 X" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="ExtraBox" Margin="0,10,0,0" Height="26"/>
+                            <TextBlock Grid.Row="2" Grid.Column="2" Text="N 遍播满后再续播多少秒"
+                                       VerticalAlignment="Center" Margin="12,10,0,0"
+                                       Foreground="{StaticResource TextFaint}"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="淡出秒数 F" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                            <TextBox Grid.Row="3" Grid.Column="1" x:Name="FadeBox" Margin="0,10,0,0" Height="26"/>
+                            <TextBlock Grid.Row="3" Grid.Column="2" Text="额外加在最后的一段，边播边淡出"
+                                       VerticalAlignment="Center" Margin="12,10,0,0"
+                                       Foreground="{StaticResource TextFaint}"/>
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="切曲淡音（秒）" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                            <TextBox Grid.Row="4" Grid.Column="1" x:Name="SeekFadeBox" Margin="0,10,0,0" Height="26"/>
+                            <TextBlock Grid.Row="4" Grid.Column="2" Text="切曲与拖动进度条时的淡化时长，用来压掉爆音"
+                                       VerticalAlignment="Center" Margin="12,10,0,0"
+                                       Foreground="{StaticResource TextFaint}"/>
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="输出设备" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                            <ComboBox Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" x:Name="DeviceCombo"
+                                      Margin="0,10,0,0" Height="26" Width="340" HorizontalAlignment="Left"
+                                      VerticalContentAlignment="Center"/>
+                        </Grid>
+
+                        <CheckBox x:Name="GlobalKeysBox" Margin="0,22,0,0"
+                                  Content="全局多媒体键（未聚焦时也响应 播放/暂停、上一首、下一首）"/>
+                        <TextBlock Margin="22,6,0,0" Foreground="{StaticResource TextFaint}" TextWrapping="Wrap">
+                            热键被其他程序占用时会自动退回「仅窗口聚焦时响应」。
+                        </TextBlock>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ 导出 ============ -->
+            <TabItem Header="导出">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <TextBlock Foreground="{StaticResource TextDim}" TextWrapping="Wrap" Margin="0,0,0,18">
+                            导出一律按「普通模式」的时间线：
+                            <Run Foreground="{StaticResource Emphasis}">intro + N×loop + X + F</Run>，与当前处于哪种循环模式无关。
+                            <LineBreak/>
+                            三个数值默认<Run Foreground="{StaticResource Emphasis}">跟随播放参数</Run>；取消「跟随」并填值后就固定下来，
+                            之后播放参数再变也不跟着变，反过来也不影响播放参数。三项各自独立。
+                            <LineBreak/>
+                            输出格式：16bit PCM wav，沿用源采样率（灵界版是 22050Hz）。
+                        </TextBlock>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150"/>
+                                <ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="循环次数 N" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="0" Grid.Column="1" x:Name="ExpLoopBox" Height="26"/>
+                            <CheckBox Grid.Row="0" Grid.Column="2" x:Name="ExpLoopFollow" Content="跟随播放参数"
+                                      VerticalAlignment="Center" Margin="14,0,0,0"
+                                      Foreground="{StaticResource TextDim}"
+                                      Checked="ExpFollow_Changed" Unchecked="ExpFollow_Changed"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="额外秒数 X" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="ExpExtraBox" Margin="0,10,0,0" Height="26"/>
+                            <CheckBox Grid.Row="1" Grid.Column="2" x:Name="ExpExtraFollow" Content="跟随播放参数"
+                                      VerticalAlignment="Center" Margin="14,10,0,0"
+                                      Foreground="{StaticResource TextDim}"
+                                      Checked="ExpFollow_Changed" Unchecked="ExpFollow_Changed"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="淡出秒数 F" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="ExpFadeBox" Margin="0,10,0,0" Height="26"/>
+                            <CheckBox Grid.Row="2" Grid.Column="2" x:Name="ExpFadeFollow" Content="跟随播放参数"
+                                      VerticalAlignment="Center" Margin="14,10,0,0"
+                                      Foreground="{StaticResource TextDim}"
+                                      Checked="ExpFollow_Changed" Unchecked="ExpFollow_Changed"/>
+                        </Grid>
+
+                        <TextBlock Text="输出目录" Margin="0,20,0,4"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" x:Name="ExpDirBox" Height="26"/>
+                            <Button Grid.Column="1" Content="浏览…" Click="ExpDirBrowse_Click"
+                                    Margin="8,0,0,0"/>
+                        </Grid>
+                        <TextBlock Text="留空则用程序目录下的 export\" Margin="0,6,0,0"
+                                   Foreground="{StaticResource TextFaint}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ 外观 ============ -->
+            <TabItem Header="外观">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <TextBlock Text="界面字体" Margin="0,0,0,8"/>
+                        <ComboBox x:Name="FontCombo" Width="380" HorizontalAlignment="Left" Height="26"
+                                  VerticalContentAlignment="Center"
+                                  SelectionChanged="FontCombo_SelectionChanged">
+                            <ComboBoxItem Content="Yu Gothic UI（推荐，日文显示最佳）"
+                                          Tag="Yu Gothic UI, Meiryo UI, Microsoft YaHei UI"/>
+                            <ComboBoxItem Content="Meiryo UI"
+                                          Tag="Meiryo UI, Yu Gothic UI, Microsoft YaHei UI"/>
+                            <ComboBoxItem Content="Microsoft YaHei UI"
+                                          Tag="Microsoft YaHei UI, Yu Gothic UI"/>
+                            <ComboBoxItem Content="MS Gothic"
+                                          Tag="MS Gothic, Yu Gothic UI"/>
+                        </ComboBox>
+                        <TextBlock Text="影响曲名等日文文本的显示。系统缺字体时按逗号顺序回退。"
+                                   Margin="0,6,0,0" Foreground="{StaticResource TextFaint}"/>
+
+                        <TextBlock Text="窗口" Margin="0,26,0,8" FontWeight="SemiBold"/>
+                        <TextBlock Text="尺寸与位置会随其他设置一起存进 settings.json，下次启动自动恢复。"
+                                   Foreground="{StaticResource TextFaint}" TextWrapping="Wrap"/>
+                        <TextBlock Text="目前只提供深色主题。" Margin="0,6,0,0"
+                                   Foreground="{StaticResource TextFaint}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+
+        <!-- 底部按钮：路径页的校验统一由「应用」触发 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <TextBlock x:Name="WritableWarning" VerticalAlignment="Center" Margin="0,0,16,0"
+                       Foreground="{StaticResource Warn}" Visibility="Collapsed"
+                       Text="程序目录不可写，本次设置仅在本次运行内有效"/>
+            <Button Content="应用"   Click="Apply_Click"   Margin="0,0,8,0" IsDefault="True"/>
+            <Button Content="确定"   Click="Ok_Click"      Margin="0,0,8,0"/>
+            <Button Content="取消"   Click="Cancel_Click"  IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

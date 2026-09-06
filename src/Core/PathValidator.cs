@@ -1,0 +1,180 @@
+// 注意：WPF 项目里 System.IO 不在隐式 using 中（SDK 主动摘除，
+// 否则 System.IO.Path 会和生成代码里的 System.Windows.Shapes.Path 撞名）。
+// 所以凡是用到 File / Directory / Path 的文件都要显式写这一行，不能依赖隐式 using。
+using System.IO;
+using System.Text;
+using ThbgmPlayer.Data;
+
+namespace ThbgmPlayer.Core;
+
+/// <summary>某部作品的路径校验结果。</summary>
+public enum PathStatus
+{
+    /// <summary>未设置路径 —— 列表里灰显，不可播。</summary>
+    NotSet,
+    /// <summary>校验通过。</summary>
+    Ok,
+    /// <summary>有疑点但不阻断，仍可尝试播放（界面标黄）。</summary>
+    Warning,
+    /// <summary>校验失败。</summary>
+    Failed,
+}
+
+public sealed class ValidateResult
+{
+    public PathStatus Status { get; init; }
+    public string Message { get; init; } = "";
+
+    public static readonly ValidateResult NotSet =
+        new() { Status = PathStatus.NotSet, Message = "未设置" };
+
+    public static ValidateResult Ok(string msg = "正常") =>
+        new() { Status = PathStatus.Ok, Message = msg };
+
+    public static ValidateResult Warn(string msg) =>
+        new() { Status = PathStatus.Warning, Message = msg };
+
+    public static ValidateResult Fail(string msg) =>
+        new() { Status = PathStatus.Failed, Message = msg };
+}
+
+/// <summary>
+/// 路径校验。只读取原始游戏文件，不做任何解包或写入。
+///
+/// 校验依据（均已在真实数据上验证，见 dependence/03_tools 下的探测脚本）：
+///   1. thbgm.dat 头部 16 字节 ZWAV 头：magic="ZWAV"，version=1，
+///      byte[9]=主版本 BCD，byte[8]=小数位 ×16（0x00/0x30/0x50/0x80 对应 .0/.3/.5/.8）。
+///      用头里的作品号和用户填的路径比对，可抓出"把 TH13 目录指给 TH14"这类手滑。
+///   2. 文件大小 == 16 + Σ(所有数据块字节数)，实测 20 作 Δ 全为 0。
+///   3. TH06 无 dat，音频是 bgm\th06_NN.wav，校验 17 个文件是否齐全。
+///
+/// 校验失败只标黄、不阻断播放（DESIGN_v3.md §4.2）。
+/// </summary>
+public static class PathValidator
+{
+    /// <summary>dat 文件名。全程序唯一写死的文件名 —— 不做扫描就必须按固定名找。</summary>
+    public const string DatFileName = "thbgm.dat";
+
+    /// <summary>TH06 音频子目录名。同为写死。</summary>
+    public const string WavSubDirectory = "bgm";
+
+    /// <summary>TH06 循环点文件（目前循环点已固化进索引，此文件仅作存在性提示）。</summary>
+    public const string Th06PosFileName = "紅魔郷MD.DAT";
+
+    private const string Magic = "ZWAV";
+    private const int HeaderSize = 16;
+
+    /// <summary>校验一部作品的路径。</summary>
+    public static ValidateResult Validate(GameDef game, string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return ValidateResult.NotSet;
+
+        return game.IsWavSource ? ValidateWav(game, path) : ValidateZwav(game, path);
+    }
+
+    // ---------- 常规 20 作：thbgm.dat ----------
+
+    private static ValidateResult ValidateZwav(GameDef game, string path)
+    {
+        if (!Directory.Exists(path))
+            return ValidateResult.Fail("目录不存在");
+
+        var datPath = Path.Combine(path, DatFileName);
+        if (!File.Exists(datPath))
+            return ValidateResult.Fail($"找不到 {DatFileName}");
+
+        // 1) 头部
+        byte[] head;
+        long fileSize;
+        try
+        {
+            using var fs = File.OpenRead(datPath);
+            fileSize = fs.Length;
+            if (fileSize < HeaderSize)
+                return ValidateResult.Fail("文件过小，不是有效的 thbgm.dat");
+            head = new byte[HeaderSize];
+            fs.ReadExactly(head, 0, HeaderSize);
+        }
+        catch (Exception ex)
+        {
+            return ValidateResult.Fail($"读取失败：{ex.Message}");
+        }
+
+        if (Encoding.ASCII.GetString(head, 0, 4) != Magic)
+            return ValidateResult.Fail("不是 ZWAV 格式（头部魔数不符）");
+
+        int version = head[4];
+        if (version != 1)
+            return ValidateResult.Warn($"未预期的 ZWAV 版本 {version}");
+
+        // 2) 头里的作品号 vs 用户填的路径所对应的作品
+        var (major, frac, ok) = ParseGameNumber(game.Id);
+        if (ok)
+        {
+            int actualMajor = BcdToInt(head[9]);
+            int actualFrac = head[8] / 16;
+            if (actualMajor != major || actualFrac != frac)
+                return ValidateResult.Fail(
+                    $"作品号不符：文件是 TH{actualMajor}{(actualFrac != 0 ? "." + actualFrac : "")}，这里应为 {game.Code}");
+        }
+
+        // 3) 文件大小 == 16 + Σ 所有数据块
+        long expected = HeaderSize + game.Tracks.Sum(t => t.Length + (t.Alt?.Length ?? 0));
+        if (fileSize != expected)
+            return ValidateResult.Warn(
+                $"大小不符（实际 {fileSize:N0}，索引预期 {expected:N0}，差 {fileSize - expected:+N0}），可能版本不一致");
+
+        return ValidateResult.Ok($"{game.Tracks.Count} 首 · {fileSize / 1024 / 1024} MB");
+    }
+
+    // ---------- TH06：bgm\*.wav ----------
+
+    private static ValidateResult ValidateWav(GameDef game, string path)
+    {
+        // 容错：用户若直接指到 bgm 目录本身（下面直接就是 wav），上退一级
+        if (game.Tracks.Count > 0 &&
+            File.Exists(Path.Combine(path, game.Tracks[0].File ?? "")) &&
+            !Directory.Exists(Path.Combine(path, WavSubDirectory)))
+        {
+            var parent = Directory.GetParent(path.TrimEnd(Path.DirectorySeparatorChar))?.FullName;
+            if (parent is not null)
+                path = parent;
+        }
+
+        if (!Directory.Exists(path))
+            return ValidateResult.Fail("目录不存在");
+
+        var bgmDir = Path.Combine(path, WavSubDirectory);
+        if (!Directory.Exists(bgmDir))
+            return ValidateResult.Fail($"找不到 {WavSubDirectory}\\ 子目录");
+
+        var missing = game.Tracks.Where(t => !File.Exists(Path.Combine(bgmDir, t.File ?? ""))).ToList();
+        if (missing.Count == game.Tracks.Count)
+            return ValidateResult.Fail($"{WavSubDirectory}\\ 下没有任何 th06_NN.wav");
+        if (missing.Count > 0)
+            return ValidateResult.Warn($"缺少 {missing.Count} 个文件（如 {missing[0].File}）");
+
+        return ValidateResult.Ok($"{game.Tracks.Count} 首 · wav");
+    }
+
+    /// <summary>
+    /// 把作品代号解析成 (主版本, 小数位)。
+    /// 两位数：th13 → (13, 0)；三位数：th128 → (12, 8)，th095 → (9, 5)。
+    /// </summary>
+    public static (int Major, int Frac, bool Ok) ParseGameNumber(string id)
+    {
+        if (!id.StartsWith("th", StringComparison.OrdinalIgnoreCase))
+            return (0, 0, false);
+        var digits = id[2..];
+        if (digits.Length == 2 && int.TryParse(digits, out var m2))
+            return (m2, 0, true);
+        if (digits.Length == 3 &&
+            int.TryParse(digits[..2], out var m3) &&
+            int.TryParse(digits.AsSpan(2), out var f3))
+            return (m3, f3, true);
+        return (0, 0, false);
+    }
+
+    private static int BcdToInt(byte b) => ((b >> 4) * 10) + (b & 0xF);
+}

@@ -1,0 +1,67 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- 只为用 FolderBrowserDialog（文件夹选择）。WPF 自身没有文件夹选择对话框。 -->
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <AssemblyName>ThbgmPlayer</AssemblyName>
+    <RootNamespace>ThbgmPlayer</RootNamespace>
+
+    <!-- 曲名是日语，源码与资源统一 UTF-8 -->
+    <CodePage>65001</CodePage>
+    <!-- 不做单文件发布：自解压到临时目录会破坏"一个文件夹跑"的便携性 -->
+    <PublishSingleFile>false</PublishSingleFile>
+    <!-- 框架依赖，不自带运行时，产物就是几个 dll -->
+    <SelfContained>false</SelfContained>
+
+    <!-- 程序集/文件版本必须是纯数字；给人看的版本号走 InformationalVersion（可带字母）。
+         「关于」对话框读的就是 InformationalVersion。 -->
+    <Version>1.0.0</Version>
+    <InformationalVersion>1.0a</InformationalVersion>
+    <Company>ThbgmPlayer</Company>
+    <Product>东方 Project BGM 播放器</Product>
+
+    <!-- exe 图标（资源管理器里看到的）。多尺寸 .ico 由 tools/make_icon.py 生成 -->
+    <ApplicationIcon>..\assets\icon\bgmplayer.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- SDK 在 UseWindowsForms=true 时自动注入 `global using System.Windows.Forms;` 和
+         `global using System.Drawing;`，会和 WPF 的 Application / Brush / Color / Point / Size
+         等撞名（CS0104）。这里摘掉这两条全局注入 —— 代码里凡是要用 WinForms 的地方
+         一律写全称（目前只有 FolderBrowserDialog 一处）。 -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="3.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 把构建时间写进程序集元数据，供「关于」对话框读取。
+         不能读 PE 头的时间戳：确定性编译（SDK 默认开启）下那是内容哈希，不是真实时间。
+         也不能读 exe 的修改时间：那可能是复制时间。 -->
+    <AssemblyMetadata Include="BuildTimestamp"
+                      Value="$([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 内嵌曲目索引。指定 LogicalName，代码里按 "tracks.json.gz" 取，不受目录结构影响。
+         数据源：data/tracklist.csv（346 条，含 13 首 TH13 灵界版）
+         生成：tools/csv_to_tracksjson.py -->
+    <EmbeddedResource Include="Resources\tracks.json.gz" LogicalName="tracks.json.gz" />
+
+    <!-- 窗口图标（标题栏 / 任务栏 / Alt+Tab）。以 Resource 形式打进程序集，
+         XAML 里按 "Resources/bgmplayer.ico" 这个 pack 相对路径引用（Link 决定包内路径）。 -->
+    <Resource Include="..\assets\icon\bgmplayer.ico">
+      <Link>Resources\bgmplayer.ico</Link>
+    </Resource>
+  </ItemGroup>
+
+</Project>
