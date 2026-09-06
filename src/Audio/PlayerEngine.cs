@@ -78,8 +78,11 @@ public sealed class PlayerEngine : IDisposable
             ? builder.WithDevice(device)
             : builder.WithDefaultDeviceStreamRouting();
 
-        // NAudio 3 推荐的新 API：零拷贝缓冲 + MMCSS 线程优先级；老 WasapiOut 已过时
-        var player = builder.Build();
+        // 流路由（跟随系统默认）只能异步激活：NAudio 规定开了 routing 必须 BuildAsync，
+        // 同步 Build() 会抛「call BuildAsync() instead」。这个异常此前被构造函数 catch
+        // 吞成了 InitError —— 系统默认这条路径的播放从引入 routing 起就是坏的。
+        // 这里 ctor 必须是同步的，GetAwaiter().GetResult() 等这一次性的初始化即可。
+        var player = builder.BuildAsync().GetAwaiter().GetResult();
         player.Init(new SampleToWaveProvider16(_volume));
 
         // 指定设备找不到时已经悄悄退回系统默认，把设置也掰回来，免得界面显示和实际不符
