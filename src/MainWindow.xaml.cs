@@ -138,6 +138,17 @@ public partial class MainWindow : Window
         _selPreloadTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _selPreloadTimer.Tick += SelectionPreload_Tick;
 
+        // 排序延迟计时器：可排序列表里按在行上，按住满 300ms 才进入可拖排序状态。
+        // 到时换个十字箭头光标，提示「现在拖动会移动这一行」
+        _reorderDelayTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ReorderDelayMs) };
+        _reorderDelayTimer.Tick += (_, _) =>
+        {
+            _reorderDelayTimer.Stop();
+            _reorderDelayElapsed = true;
+            if (_dragArmed && !_marqueeActive && !_reorderActive)
+                TrackGrid.Cursor = System.Windows.Input.Cursors.SizeAll;
+        };
+
         UpdateTransportEnabled();
         UpdateAltButton();
         UpdateFavoriteButton();
@@ -812,14 +823,17 @@ public partial class MainWindow : Window
     // ---------- 框选与拖动排序 ----------
 
     /*
-    手势路由（左键按下并拖过阈值时决定）：
-      · 按在行上 + 当前列表可排序（自定义 / 收藏）+ 没按 Ctrl → 拖动排序
-      · 其余一切 → 框选（按下时带 Ctrl 则追加到已有选择）
-    可排序列表里想框选：从行下方的空白处起拖，或按住 Ctrl 从行上起拖。
+    手势路由（左键按下后）：
+      · 可排序列表（自定义 / 收藏）里按在行上：先等 300ms ——
+        按住满 300ms 再拖 → 拖动排序（光标变成十字箭头提示）；
+        不到 300ms 就拖 → 框选（防止想框选时误触发排序）
+      · 其余一切（锁定列表 / 空白处 / 按 Ctrl）→ 框选，按下时带 Ctrl 则追加
+    可排序列表里想框选：快速起拖、从空白处起拖，或按住 Ctrl 从行上起拖。
     */
 
     private const double DragThreshold = 4;      // 超过这个位移才算「拖」
     private const double EdgeScrollZone = 28;    // 拖动靠近上下边缘这么多就自动滚动
+    private const int ReorderDelayMs = 300;      // 按在行上按住多久才进入可拖排序状态
 
     private bool _dragArmed;        // 左键已按下，等位移
     private bool _marqueeActive;
@@ -828,6 +842,8 @@ public partial class MainWindow : Window
     private bool _pressWithCtrl;    // 按下瞬间的 Ctrl
     private int _pressRowIndex = -1;
     private int _dropIndex = -1;    // 拖动排序的落点（原列表插入位）
+    private bool _reorderDelayElapsed;   // 排序延迟已到：再拖就是排序而不是框选
+    private DispatcherTimer? _reorderDelayTimer;
     private readonly List<TrackRow> _marqueeBase = new();   // 追加框选的基线选择
 
     /// <summary>当前列表是否允许拖动换顺序：自定义列表与收藏可以，作品列表锁定。</summary>
@@ -835,18 +851,45 @@ public partial class MainWindow : Window
         CurrentCustomList is not null ||
         (PlaylistCombo.SelectedItem as PlaylistItem)?.IsFavorites == true;
 
+    /// <summary>
+    /// 事件的原始来源是否落在滚动条或列标题上。沿可视树往上找，
+    /// 遇到 ScrollBar / 列标题 = true，遇到 DataGrid = false。
+    /// </summary>
+    private static bool IsOnScrollbarOrHeader(object? originalSource)
+    {
+        for (var v = originalSource as DependencyObject; v is not null;
+             v = System.Windows.Media.VisualTreeHelper.GetParent(v))
+        {
+            if (v is System.Windows.Controls.Primitives.ScrollBar) return true;
+            if (v is System.Windows.Controls.Primitives.DataGridColumnHeader) return true;
+            if (v is DataGrid) return false;
+        }
+        return false;
+    }
+
     private void TrackGrid_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
+        // 滚动条 / 列标题在 DataGrid 可视树内部，隧道事件会先经过我们这里 ——
+        // 但它们要自己处理拖动（滚条拖拽翻页）。不挡掉的话，框选手势会捕获鼠标、
+        // 把滚动条的拖动抢走（表现为「拖滚动条要么进框选、要么只动一点点」）。
+        if (IsOnScrollbarOrHeader(e.OriginalSource)) return;
+
         // 这是隧道事件，先于 DataGrid 自己的选中处理 —— 此刻读到的选择集还是按下前的
         _dragStart = e.GetPosition(GridHost);
         _pressWithCtrl = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Control);
         _pressRowIndex = RowIndexAt(_dragStart);
         _dragArmed = true;
         _marqueeActive = _reorderActive = false;
+        _reorderDelayElapsed = false;
 
         _marqueeBase.Clear();
         if (_pressWithCtrl)
             _marqueeBase.AddRange(TrackGrid.SelectedItems.Cast<TrackRow>());
+
+        // 按在行上且列表可排序：启动排序延迟。按住满 300ms 才进入可拖排序状态；
+        // 不到时间就拖动会被 MouseMove 判成框选
+        if (_pressRowIndex >= 0 && !_pressWithCtrl && CurrentListReorderable)
+            _reorderDelayTimer?.Start();
     }
 
     private void TrackGrid_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
@@ -861,8 +904,17 @@ public partial class MainWindow : Window
                 Math.Abs(pos.Y - _dragStart.Y) < DragThreshold) return;
 
             bool onRow = _pressRowIndex >= 0;
-            if (onRow && !_pressWithCtrl && CurrentListReorderable) BeginReorder();
-            else BeginMarquee();
+            if (onRow && !_pressWithCtrl && CurrentListReorderable && _reorderDelayElapsed)
+            {
+                BeginReorder();
+            }
+            else
+            {
+                // 排序延迟还没过就拖了（或压根不满足排序条件）→ 框选，
+                // 并废掉这次的排序资格，免得框选中途延迟到了变排序
+                _reorderDelayTimer?.Stop();
+                BeginMarquee();
+            }
         }
 
         EdgeScroll(pos);
@@ -872,6 +924,10 @@ public partial class MainWindow : Window
 
     private void TrackGrid_PreviewMouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
+        _reorderDelayTimer?.Stop();
+        _reorderDelayElapsed = false;
+        TrackGrid.ClearValue(CursorProperty);   // 摘掉排序待命时的十字箭头
+
         if (_marqueeActive)
         {
             _marqueeActive = false;
@@ -1140,8 +1196,17 @@ public partial class MainWindow : Window
     private void OpenSettings(int tab)
     {
         var dlg = new SettingsWindow { Owner = this, InitialTab = tab };
+        dlg.Applied += () => ApplySettingsSideEffects(dlg);   // 点「应用」立即生效（对话框还开着）
         dlg.ShowDialog();
+        ApplySettingsSideEffects(dlg);   // 关窗后再过一次（幂等）
+    }
 
+    /// <summary>
+    /// 设置变化后的副作用统一走这里：点「应用」（对话框还开着）和关窗后都会调到，
+    /// 全部幂等。顺序上先清缓存重建列表，再处理播放相关。
+    /// </summary>
+    private void ApplySettingsSideEffects(SettingsWindow dlg)
+    {
         PreloadCache.Clear();   // 路径可能改了，缓存里的音源指向旧文件，必须丢
 
         // 路径可能变了，重建下拉（连收藏与自定义列表一起）

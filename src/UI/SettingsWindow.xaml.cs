@@ -372,6 +372,10 @@ public partial class SettingsWindow : Window
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
+    /// <summary>点了「应用」之后触发（此时对话框还开着）。主窗口订阅它把副作用
+    /// （切输出设备、重挂热键、时间线重算等）**立即**应用，而不是等关窗。</summary>
+    public event Action? Applied;
+
     /// <summary>四个标签页共用底部按钮，一次性全部应用并保存。</summary>
     private void ApplyAll()
     {
@@ -379,6 +383,7 @@ public partial class SettingsWindow : Window
         ApplyPlayback();
         ApplyExport();
         AppSettings.Current.Save();
+        Applied?.Invoke();
     }
 
     /// <summary>校验全部路径、写回设置并保存。只有点「应用 / 确定」才会走到这里。</summary>

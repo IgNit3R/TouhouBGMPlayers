@@ -22,7 +22,7 @@
     <!-- 程序集/文件版本必须是纯数字；给人看的版本号走 InformationalVersion（可带字母）。
          「关于」对话框读的就是 InformationalVersion。 -->
     <Version>1.0.0</Version>
-    <InformationalVersion>1.0a</InformationalVersion>
+    <InformationalVersion>1.0c</InformationalVersion>
     <Company>ThbgmPlayer</Company>
     <Product>东方 Project BGM 播放器</Product>
 
