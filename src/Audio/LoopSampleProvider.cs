@@ -24,6 +24,9 @@ public sealed class LoopSampleProvider : ISampleProvider
     private readonly long _totalFrames;
     private readonly long _loopFrames;
     private readonly long _loopStartFrame;
+    private readonly bool _oneShotTrack;  // 曲目本身无循环点（黄昏作 ED/Staff Roll，由调用方声明）
+    private bool _oneShot;                // 当前生效的一次性语义 = 无循环点 且 当前是普通/随机模式
+                                          // （无限循环模式下不循环曲照常循环 —— 用户约定）
     // ↓ 以下四项由 Configure 设置，换循环模式 / 改 N X F 时会变，所以不能是 readonly
     private long _extraFrames;
     private long _fadeFrames;
@@ -37,7 +40,12 @@ public sealed class LoopSampleProvider : ISampleProvider
     private PlaybackSettings? _pendingConfig;   // 待应用的时间线参数（由 UI 线程投递）
     private bool _finished;
 
-    public LoopSampleProvider(IAudioSource source, PlaybackSettings pb)
+    /// <summary>
+    /// one-shot：一次性曲（黄昏作 ED/Staff Roll 等无循环点曲目）。
+    /// 由调用方传入 —— 播放传 true（一遍停、无 N/X/F），导出传 false（整曲作为循环段，
+    /// 正常吃 N/X/F，见 WavExporter）。源以 intro=0、loop=整曲表达「无循环点」。
+    /// </summary>
+    public LoopSampleProvider(IAudioSource source, PlaybackSettings pb, bool oneShot = false)
     {
         _source = source;
         _channels = source.Format.Channels;
@@ -57,8 +65,10 @@ public sealed class LoopSampleProvider : ISampleProvider
         if (_totalFrames <= 0)
             throw new NotSupportedException("音频格式异常：整轨长度为 0。");
 
+        // one-shot 由调用方声明（播放=无循环点曲；导出不传=false）。注意它只对普通/随机生效，
+        // 无限循环模式下不循环曲照常循环 —— 所以 loop 段按真实长度算，不归零。
+        _oneShotTrack = oneShot && _introFrames < _totalFrames;
         _loopFrames = Math.Max(1, _totalFrames - _introFrames);
-        // intro 等于甚至超过整轨时（异常数据），折返点退回 0，保证 _loopStartFrame &lt; _totalFrames
         _loopStartFrame = _introFrames < _totalFrames ? _introFrames : 0;
 
         // 8K 帧 ≈ 186ms @44100：一次回调基本一次读完，减少文件 IO 次数
@@ -90,6 +100,8 @@ public sealed class LoopSampleProvider : ISampleProvider
         Volatile.Write(ref _pendingConfig, null);
 
         _infinite = pb.LoopMode == LoopMode.Infinite;
+        // 一次性语义只对普通/随机生效；无限循环模式下不循环曲照常循环（用户约定）
+        _oneShot = _oneShotTrack && !_infinite;
         _extraFrames = SecondsToFrames(pb.ExtraSeconds);
         _fadeFrames = SecondsToFrames(pb.FadeSeconds);
 
@@ -98,15 +110,23 @@ public sealed class LoopSampleProvider : ISampleProvider
         //   普通 / 随机 → intro + N×loop + X + F，完全按播放设置
         // _emitFrames 在无限模式下只用于显示：Read 判定结束、GainAt 判定淡出
         // 都已经用 _infinite 挡开了，不会因为它不再是 0 而多出一个终点。
-        _emitFrames = _infinite
+        _emitFrames = _oneShot
             ? _totalFrames
-            : _introFrames
-              + (long)Math.Max(0, pb.LoopCount) * _loopFrames
-              + _extraFrames
-              + _fadeFrames;
+            : _infinite
+              ? _totalFrames
+              : _introFrames
+                + (long)Math.Max(0, pb.LoopCount) * _loopFrames
+                + _extraFrames
+                + _fadeFrames;
 
         // 长度变了，位置跟着重映射。保留「在循环段内的相对位置」，
         // 丢掉「已经循环了几遍」—— 同一首曲子换模式，接着当前这一遍往下播才自然。
+        if (_oneShot)
+        {
+            _emitFrame = Math.Clamp(_srcFrame, 0, Math.Max(0, _emitFrames));
+            _finished = false;
+            return;
+        }
         long offset = _srcFrame - _loopStartFrame;
         _emitFrame = offset < 0
             ? Math.Max(0, _srcFrame)                                  // 还在 intro 里，原样保留
@@ -163,6 +183,7 @@ public sealed class LoopSampleProvider : ISampleProvider
     /// </summary>
     public void SeekToLoopPosition(TimeSpan t)
     {
+        if (_oneShot) { SeekToFrame(SecondsToFrames(t.TotalSeconds)); return; }   // 无循环段：退化为普通定位
         long f = Math.Clamp(SecondsToFrames(t.TotalSeconds), 0, _loopFrames - 1);
         SeekToFrame(_introFrames + f);
     }
@@ -196,6 +217,7 @@ public sealed class LoopSampleProvider : ISampleProvider
 
     private long MapToSource(long emitFrame)
     {
+        if (_oneShot) return Math.Clamp(emitFrame, 0, _totalFrames);
         if (emitFrame < _introFrames) return emitFrame;
         return _loopStartFrame + ((emitFrame - _introFrames) % _loopFrames);
     }
@@ -203,7 +225,7 @@ public sealed class LoopSampleProvider : ISampleProvider
     /// <summary>时间线某处的增益。只有最后的淡出段小于 1。</summary>
     private float GainAt(long emitFrame)
     {
-        if (_infinite || _fadeFrames <= 0) return 1f;
+        if (_infinite || _oneShot || _fadeFrames <= 0) return 1f;
         long fadeStart = _emitFrames - _fadeFrames;
         if (emitFrame < fadeStart) return 1f;
         return (float)(1.0 - (double)(emitFrame - fadeStart) / _fadeFrames);
@@ -229,6 +251,7 @@ public sealed class LoopSampleProvider : ISampleProvider
             long toEnd = _totalFrames - _srcFrame;
             if (toEnd <= 0)
             {
+                if (_oneShot) { _finished = true; break; }   // 一次性曲：到曲末即结束，不折返
                 _srcFrame = _loopStartFrame;
                 EnsureSourcePosition();
                 continue;
@@ -264,7 +287,7 @@ public sealed class LoopSampleProvider : ISampleProvider
             _srcFrame += gotFrames;
             _srcPosBytes += (long)gotFrames * _blockAlign;   // 文件读指针同步前进
             _emitFrame += gotFrames;
-            if (_srcFrame >= _totalFrames)
+            if (_srcFrame >= _totalFrames && !_oneShot)
             {
                 _srcFrame = _loopStartFrame;
                 EnsureSourcePosition();
@@ -281,7 +304,7 @@ public sealed class LoopSampleProvider : ISampleProvider
     private void Decode16(int frames, Span<float> dest, long emitStart)
     {
         // 绝大多数时间不在淡出段，走无增益快路径：每帧省一次 GainAt（一次除法 + 分支）
-        long fadeStart = (_infinite || _fadeFrames <= 0) ? long.MaxValue : _emitFrames - _fadeFrames;
+        long fadeStart = (_infinite || _oneShot || _fadeFrames <= 0) ? long.MaxValue : _emitFrames - _fadeFrames;
         if (emitStart + frames <= fadeStart)
         {
             int n = frames * _channels;

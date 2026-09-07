@@ -178,7 +178,7 @@ public sealed class PlayerEngine : IDisposable
         var td = Pick(game, track, useAlt);
         // 预读命中就是零等待；没命中走同步读取（UI 线程付一次性读入的老代价）
         _source = PreloadCache.TryTake(game, track, useAlt) ?? AudioSourceFactory.Create(game, td);
-        _loop = new LoopSampleProvider(_source, AppSettings.Current.Playback);
+        _loop = new LoopSampleProvider(_source, AppSettings.Current.Playback, oneShot: td.IsTfOneShot);
 
         // 淡化交给混音器在采样层面做，不用音量节点：
         // 音量节点靠 8ms 定时器改增益，而音频回调是按缓冲区（约 100ms）取用的，
@@ -219,7 +219,7 @@ public sealed class PlayerEngine : IDisposable
 
         var td = Pick(game, track, useAlt);
         var src = PreloadCache.TryTake(game, track, useAlt) ?? AudioSourceFactory.Create(game, td);
-        var lp = new LoopSampleProvider(src, AppSettings.Current.Playback);
+        var lp = new LoopSampleProvider(src, AppSettings.Current.Playback, oneShot: td.IsTfOneShot);
 
         // 对齐要等真正换上去的那一刻再做：从现在到换链之间，旧链还会被读走
         // 最多一个缓冲区（100ms 延迟）。提前 seek 的话两条链错开这么多，

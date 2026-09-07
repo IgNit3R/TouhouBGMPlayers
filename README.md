@@ -1,84 +1,92 @@
-# 东方ProjectBGM播放器（thbgmplayer）
+# 东方Project BGM播放器（TouhouBGMPlayers）
 
-Windows 平台的东方 Project BGM 播放器。覆盖 **TH06–TH20 共 21 部整数正作**，
-**运行时直接读取游戏原始数据文件**（`thbgm.dat`，TH06 为 `bgm\th06_NN.wav`），
-不预提取音频资产。曲名使用各作 `musiccmt.txt` 里的原始日文名，循环点全部内嵌。
+Windows 平台的东方 Project BGM 播放器。覆盖 **全部官方作品**（TH06–TH20 共 21 部整数正作7 部黄昏边境格斗作），**运行时直接读取游戏原始数据文件**，不预提取音频资产、不调用外部拆包程序。曲名使用各作原始日文名，循环点以整数样本内嵌。
 
-当前版本：**1.0a**
+当前版本：**1.3k**
+
+## 收录作品
+
+- **整数正作及小数点外传（TH06–TH20）**：東方紅魔郷（TH06）、東方妖々夢（TH07）、東方永夜抄（TH08）、東方花映塚（TH09）、東方文花帖（TH09.5）、東方風神録（TH10）、東方地霊殿（TH11）、東方星蓮船（TH12）、ダブルスポイラー（TH12.5）、妖精大戦争（TH12.8）、東方神霊廟（TH13）、東方輝針城（TH14）、弾幕アマノジャク（TH14.3）、東方紺珠伝（TH15）、東方天空璋（TH16）、秘封ナイトメアダイアリー（TH16.5）、東方鬼形獣（TH17）、東方虹龍洞（TH18）、バレットフィリア達の闇市場（TH18.5）、東方獣王園（TH19）、東方錦上京（TH20）
+- **黄昏边境格斗作**：東方萃夢想（TH07.5）、東方緋想天（TH10.5）、東方非想天則（TH12.3）、東方心綺楼（TH13.5）、東方深秘録（TH14.5）、東方憑依華（TH15.5）、東方剛欲異聞（TH17.5）
+
+两类作品在游戏列表里按编号序混排（TH07 → TH07.5 → TH08 …）。
 
 ## 特性
 
-- **直读原始数据**：运行时按内嵌字节索引从 dat 里取 PCM，循环折返零磁盘 IO（整轨驻留内存）
-- **三种循环模式**：无限循环 / 普通（intro → loop×N → 额外 X 秒 → 淡出 F 秒）/ 随机，参数可调
-- **TH13 灵界版**：主版 / 灵界版一键切换，交叉淡化无爆音，来回 A/B 零等待
-- **预读缓存**：列表顺序、灵界版配对、选中防抖三个预测源，切曲基本零等待
-- **播放列表**：21 部作品列表 + 收藏 + 自定义跨作品列表；框选多选、拖动排序、回车即播
-- **导出 WAV**：按播放时间线渲染（N / X / F 生效），支持批量与灵界版可选
-- **全局多媒体键**、**输出设备选择**（跟随系统自动流路由 / 指定声卡，切换即时生效）
-- **深色主题**、便携运行（设置/收藏/列表都写在 exe 旁，不写 AppData）
+- **直读原始数据**：运行时按内嵌索引从容器取音频。整数作读 `thbgm.dat`（TH06 为`bgm\th06_NN.wav`），黄昏作读各自容器（Suica / 双层 XOR / TFPK `.pak`），内存解出、零落盘；
+- **循环折返零磁盘 IO**：整轨驻留内存，intro/loop 按整数样本展开；
+- **三种循环模式**：无限循环 / 普通（intro → loop×N → 额外 X 秒 → 淡出 F 秒）/ 随机，参数可调；
+- **不循环曲（ED/Staff Roll）**：普通/随机模式播一遍即停（不做淡出），无限模式照常整曲循环，导出时则正常受循环参数影响；
+- **TH13 灵界版**：主版 / 灵界版一键切换，交叉淡化无爆音；
+- **预读缓存**：切曲基本零等待；
+- **播放列表**：28 部作品列表 + 收藏 + 自定义跨作品列表；框选多选、拖动排序、回车即播；
+- **导出 WAV**：按播放时间线渲染（N / X / F 生效），支持批量与灵界版可选；
+- **全局多媒体键**、**输出设备选择**（跟随系统自动流路由 / 指定声卡）；
+- **深色主题**、便携运行（设置/收藏/列表都写在 exe 旁，不写 AppData）。
 
 ## 运行环境
 
-- Windows 10 1607 或更高（输出设备跟随系统用到了自动流路由）
+- Windows 10 1607 或更高
 - **.NET 10 运行时**（框架依赖部署，程序本体只有几 MB）
 - 至少一部游戏的原始数据（程序不含任何游戏资产，需自行准备，见下文「版权」）
 
 ## 构建
 
-前置：**[.NET 10 SDK](https://dotnet.microsoft.com/download)**（首次构建需联网还原 NuGet 依赖 NAudio 3）
+前置：**[.NET 10 SDK](https://dotnet.microsoft.com/download)**（首次构建需联网还原 NuGet 依赖：NAudio 3、VorbisPizza）
 
 ```
 git clone <仓库地址>
-cd bgmplayer/src
+cd TouhouBGMPlayers/src
 dotnet build -c Release
 ```
 
-产物在 `src/bin/Release/net10.0-windows/`。把这一层整个拷走即可运行（便携式）。
-Debug 配置把 `-c Release` 去掉即可，产物落在 `src/bin/Debug/...`。
+产物在 `src/bin/Release/net10.0-windows/`。把这一层整个拷走即可运行（便携式）。  
+Debug 配置把 `-c Release` 去掉即可。
 
-> 构建输入只有 `src/` + `assets/icon/bgmplayer.ico`（csproj 以相对路径引用），
-> 仓库其余目录与编译无关。
+> **构建输入只有 `src/` + `addons/` + `assets/`**。`addons/` 是黄昏作容器解析器（桥接类库，被 csproj 引用）；`assets/icon/bgmplayer.ico` 是程序图标。仓库其余目录与编译无关。
 
 ## 使用
 
 首次运行后到 **设置 → 路径** 为每部作品指定目录：
 
-- **常规作品**：指到 `thbgm.dat` 所在的目录
-- **TH06**：指到同时包含 `bgm\` 与 `紅魔郷MD.DAT` 的那一级
-
-没配置的作品在列表里灰显，配了就能播。其余（循环参数、导出、输出设备、外观）见各设置页。
+- **整数正作**：指到 `thbgm.dat` 所在的目录，TH06 指到同时包含 `bgm\` 的那一级；
+- **黄昏作**：指到游戏根目录（即含对应容器文件的那一级，如 `th105b.dat`、`th135.pak`、`data.cga` 等所在目录），没配置的作品在列表里灰显，配了就能播。
 
 ## 目录结构
 
 ```
-├── src/        WPF 程序本体（csproj 在这层，bin/obj 挂在 src 下）
-├── design/     设计文档（DESIGN_v3.md 及佐证材料）
-├── data/       曲目数据：tracklist.csv（索引的唯一事实来源）、审校记录、_gen/ 中间产物
-│               （source/ 是游戏提取素材，git 忽略，见「版权」）
-├── tools/      维护脚本（见下）
+├── src/        WPF 程序本体（csproj 在这层，bin/obj 挂在 src 下；Resources\ 存内嵌索引/名单）
+├── addons/     黄昏作容器解析器源码（Suica/Xor/pakReader）+ 桥接工程 addons.csproj + docs\
 ├── assets/     图标素材（bgmplayer.ico 是编译输入）
-└── docs/       构建日志、决策记录、检查点
+├── docs/       权威数据材料（定稿曲目表 ×7、作品元数据、审计）+ 构建记录
+└── tools/      维护脚本（索引再生成链与校验，见下）
 ```
 
 ## 维护脚本（tools/，需 Python 3）
 
-| 脚本 | 用途 |
-|---|---|
-| `check_src.py` | 源码静态自检（XAML / 括号 / 构造签名 / 事件绑定 / 命名控件 / STJ / 残留符号） |
-| `csv_to_tracksjson.py` | `data/tracklist.csv` → 内嵌索引 `src/Resources/tracks.json.gz` |
-| `extract_game_names.py` | 从各游戏自带 おまけ.txt 首行提取正式作品名（对照用） |
-| `make_icon.py` | PNG → 多尺寸 `bgmplayer.ico`（16~256 七档，需 Pillow） |
+维护期工具，**不参与编译**；用来从权威数据重新生成内嵌索引并校验。
 
-数据流：
+| 脚本                      | 用途                                                         |
+| ----------------------- | ---------------------------------------------------------- |
+| `csv_to_tracksjson.py`  | 主系列 `tracklist.csv` → 内嵌索引 `src/Resources/tracks.json.gz`  |
+| `csv_to_tfjson.py`      | 黄昏作定稿曲表 → 内嵌索引 `src/Resources/tracks.tf.json.gz`（循环点整数样本）  |
+| `loop_delta.py`         | 各作循环点权威源解析（th075 cue / 105-155 sfl / 175 ini → 整数样本），与索引比对 |
+| `build_audit_xlsx.py`   | 生成循环点审计表（逐曲 + 权威比对 + 汇总）                                   |
+| `check_src.py`          | 源码静态自检                                                     |
+| `extract_game_names.py` | 从各游戏自带 おまけ.txt 提取正式作品名（对照用）                                |
+| `make_icon.py`          | PNG → 多尺寸 `bgmplayer.ico`                                  |
+
+数据流（构建期物化，权威源留存）：
 
 ```
-data/tracklist.csv ──csv_to_tracksjson.py──> src/Resources/tracks.json.gz（EmbeddedResource）
+docs/定稿曲表 ──csv_to_*json.py──> src/Resources/tracks*.json.gz（EmbeddedResource，开箱即播）
 ```
+
+> 注意：`tools/` 与 `docs/` 属于**维护者本机资料**——重新生成索引依赖它们，但**编译播放不需要**（索引已提交进 `src/Resources/`）。  
+> 反正你的游戏文件也不一定是编写人的环境对吧，直接拿来用肯定会报错的因为路径写死了。
 
 ## 版权
 
-- 本仓库**不含任何游戏资产**。`data/source/`（musiccmt 提取件、fmt/dat/mid 等）
-  已加入 .gitignore 不入库——它们是 ZUN / 上海爱丽丝幻乐团的版权内容，
-  且随时可从本地游戏重新生成。
-- 运行播放器需要你**自行拥有正版游戏**，程序只读取你本机的原始数据文件。
+- 本仓库**不含任何游戏资产**。运行播放器需要你**自行拥有正版游戏**，程序只读取你本机的原始数据文件。
+- 黄昏作容器解析器为自研移植（不调用 thtk / 135tk / touhouSE 等外部拆包程序）。
 - 东方 Project 是上海爱丽丝幻乐团（ZUN）的作品。本项目为粉丝工具，与官方无关。

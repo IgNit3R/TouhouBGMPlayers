@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 黄昏作容器解析器类库：把 addons/ 下 75/75 项验证通过的 5 个源文件
+       编译成一个库供主播放器引用。单开工程是因为解析器源码依赖 ImplicitUsings
+       提供的 System.IO，而 WPF 主工程（src/）主动摘除了它——源码保持零改动。 -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>addons</RootNamespace>
+    <AssemblyName>addons</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 关掉默认通配，只收 5 个解析器源文件（测试工程和 Main 不进库） -->
+    <Compile Remove="**/*.cs" />
+    <Compile Include="Suica\SuicaReader.cs" />
+    <Compile Include="XorReader\Mt19937.cs" />
+    <Compile Include="XorReader\XorContainerReader.cs" />
+    <Compile Include="XorReader\SflReader.cs" />
+    <Compile Include="pakReader\pakReader.cs" />
+  </ItemGroup>
+
+</Project>

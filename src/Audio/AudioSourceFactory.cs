@@ -19,6 +19,9 @@ public static class AudioSourceFactory
         if (string.IsNullOrWhiteSpace(dir))
             throw new InvalidOperationException($"未设置 {game.Code} 的路径（设置 → 路径）。");
 
+        if (game.IsTfSource)
+            return CreateTf(game, track, dir);
+
         string path = game.IsWavSource
             ? ResolveWavPath(game, dir, track)
             : ResolveDatPath(game, dir);
@@ -28,6 +31,35 @@ public static class AudioSourceFactory
 
         var format = new WaveFormat(track.Rate, track.Bits, track.Channels);
         return new PcmFileSource(path, track.Start, track.Intro, track.Length, format);
+    }
+
+    /// <summary>
+    /// 黄昏作（tf 系）：从容器（Suica / XOR dat / TFPK / cga）解出整条音频字节，
+    /// 按魔数路由到内存解码源。循环点是秒（索引里存秒），字节换算在音频源内部做。
+    /// </summary>
+    private static IAudioSource CreateTf(GameDef game, TrackDef track, string dir)
+    {
+        if (string.IsNullOrEmpty(track.File))
+            throw new InvalidOperationException($"{game.Code} 第 {track.No} 首在索引里没有文件名。");
+
+        using var set = new TfContainerSet(game, dir);
+        byte[] bytes = set.GetEntry(track.File);
+
+        // 条目魔数路由：tfogg 是 OggS（ogg），tfsuica 是 RIFF（wav）
+        if (bytes.Length >= 4 && bytes.AsSpan(0, 4).SequenceEqual("OggS"u8))
+            return new OggMemorySource(bytes, track.LoopStartSec, track.LoopEndSec);
+        if (bytes.Length >= 4 && bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8))
+            return new WavEntrySource(bytes, track.LoopStartSec, track.LoopEndSec);
+
+        // TFWA：实测（th145.pak 全部 897 个 TFWA 条目）是 SE 音效＝约 31B 头 + 裸 PCM，
+        // 全量扫描零 OGG 载荷；内嵌索引也没有任何 TFWA 轨，正常播放不会走到这里。
+        // 头布局（采样率@9 / 声道@17 / 位深@19）与载荷对齐尚无权威规范，先明确拒绝而不是解出垃圾。
+        if (bytes.Length >= 4 && bytes.AsSpan(0, 4).SequenceEqual("TFWA"u8))
+            throw new NotSupportedException(
+                $"{game.Code} 条目 {track.File} 是 TFWA 容器（SE 音效，裸 PCM 载荷），暂不支持播放。");
+
+        string head = Convert.ToHexString(bytes, 0, Math.Min(4, bytes.Length));
+        throw new NotSupportedException($"{game.Code} 条目 {track.File} 的魔数不是 OggS/RIFF/TFWA（开头 {head}），无法播放。");
     }
 
     /// <summary>常规 20 作：路径指到 thbgm.dat 所在的目录。</summary>

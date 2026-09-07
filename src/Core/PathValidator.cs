@@ -70,7 +70,69 @@ public static class PathValidator
         if (string.IsNullOrWhiteSpace(path))
             return ValidateResult.NotSet;
 
+        if (game.IsTfSource)
+            return ValidateTf(game, path);
+
         return game.IsWavSource ? ValidateWav(game, path) : ValidateZwav(game, path);
+    }
+
+    // ---------- 黄昏作（tf 系）：容器组 ----------
+
+    /// <summary>
+    /// 黄昏作没有明文魔数可用：th075 的 Suica、th105/123 的双层 XOR 加密 dat 都是密文，
+    /// cga/cgb 也无魔数，只有 TFPK（.pak）头 4 字节是明文 "TFPK"。
+    /// 所以 tf 侧以「存在性 + 大小>0」为主，TFPK 才做魔数探测。
+    /// </summary>
+    private static ValidateResult ValidateTf(GameDef game, string path)
+    {
+        if (!Directory.Exists(path))
+            return ValidateResult.Fail("目录不存在");
+
+        var containers = game.Containers;
+        if (containers is null || containers.Count == 0)
+            return ValidateResult.Fail("索引缺少容器信息");
+
+        // 主包缺失 → Fail；补包缺失 → Warn（不阻断，只用主包内容）
+        var missing = new List<string>();
+        long firstSize = 0;
+        int present = 0;
+        for (int i = 0; i < containers.Count; i++)
+        {
+            string p = Path.Combine(path, containers[i]);
+            if (!File.Exists(p))
+            {
+                if (i == 0)
+                    return ValidateResult.Fail($"找不到主容器 {containers[0]}");
+                missing.Add(containers[i]);
+                continue;
+            }
+            if (present == 0) firstSize = new FileInfo(p).Length;
+            present++;
+        }
+
+        if (present == 0)
+            return ValidateResult.Fail("没有任何容器文件");
+
+        // 轻魔数探测（只读头部 ≤16 字节）
+        string headMsg;
+        try
+        {
+            using var fs = File.OpenRead(Path.Combine(path, containers[0]));
+            Span<byte> buf = stackalloc byte[16];
+            int n = fs.Read(buf);
+            headMsg = n >= 4 && Encoding.ASCII.GetString(buf[..4]) == "TFPK"
+                ? $"{present} 个容器 · TFPK · 首包 {firstSize / 1024 / 1024} MB"
+                : $"{present} 个容器 · 加密容器，仅校验存在性";
+        }
+        catch (Exception ex)
+        {
+            return ValidateResult.Fail($"读取失败：{ex.Message}");
+        }
+
+        if (missing.Count > 0)
+            return ValidateResult.Warn($"缺少补丁容器 {string.Join("、", missing)}（将只用主包内容）");
+
+        return ValidateResult.Ok(headMsg);
     }
 
     // ---------- 常规 20 作：thbgm.dat ----------

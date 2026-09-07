@@ -14,11 +14,17 @@
 # WorkBuddy 会话残留（真正的项目记忆在 thworks 根的那份）
 .workbuddy/
 
-# 游戏提取的原始素材（musiccmt / fmt / dat / mid 等）：游戏资产有版权，
-# 公开仓库不能放；它们是随时可从游戏重新生成的提取件，不属于必须入库的资料
-data/source/
+# ── 维护者本机资料：每人存放方式不同，不进公开仓库 ──
+# 公开仓库只放「编译播放所需的最小集合」（src + addons + assets + README/LICENSE）。
+# 索引已在本地物化进 src/Resources/ 并提交，克隆者开箱即播，不需要下面这些。
+# - tools\：索引再生成/校验脚本（且依赖仓库外的 thworks 工作区数据，含写死绝对路径）
+# - docs\：权威数据、构建记录、审计报告（内嵌索引的"源代码"，属于本机维护资料）
+#tools/
+#docs/
+#--这两项是手改的，想了想还是放出去吧。
 
-# ── 以下都是构建输入或维护资料，必须被跟踪，勿加忽略规则 ──
-# src\                        源码 + csproj + Resources\tracks.json.gz（内嵌索引）
+# ── 以下必须被跟踪，勿加忽略规则 ──
+# src\                        源码 + csproj + Resources\（内嵌索引/名单 —— 开箱即播的关键）
+# addons\                     黄昏作容器解析器源码 + 桥接工程 addons.csproj
 # assets\icon\bgmplayer.ico   唯一的 src 外编译输入（csproj 相对路径引用）
-# data\（除 source\） design\ docs\ tools\   索引再生成链与维护脚本
+# README.md / LICENSE / .gitignore

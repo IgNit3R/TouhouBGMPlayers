@@ -20,7 +20,11 @@ public sealed class TrackRow : ViewModelBase
         Title = track.Title;
         IsAvailable = available;
         LengthText = FormatTime(track.LengthTime);
-        LoopText = $"intro {FormatTime(track.IntroTime)} / loop {FormatTime(track.LoopTime)}";
+        // 统一风格：循环曲（主系列与黄昏作）都是 intro/loop 两段时长；黄昏作不循环曲标「不循环」。
+        // 黄昏作的三个时间属性已按秒计算（TrackDef.IntroTime/LoopTime），格式与主系列完全一致。
+        LoopText = track.DurationSec is not null && !track.HasLoopSeconds
+            ? "不循环"
+            : $"intro {FormatTime(track.IntroTime)} / loop {FormatTime(track.LoopTime)}";
     }
 
     public string GameId { get; }

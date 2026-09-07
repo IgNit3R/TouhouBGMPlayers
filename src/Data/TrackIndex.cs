@@ -19,6 +19,37 @@ public sealed class TrackDef
     [JsonPropertyName("r")] public int Rate { get; init; }           // 采样率
     [JsonPropertyName("c")] public int Channels { get; init; }       // 声道数
     [JsonPropertyName("b")] public int Bits { get; init; }           // 位深
+
+    // ---- tf 系（黄昏作）循环点：以「整数样本」存储 ----
+    // sfl / WAV cue / .ogg.ini 给出的本就是整数样本，存样本可彻底消除秒↔样本的往返舍入。
+    // 对外的 *Sec 属性按 Rate 换算得到，调用方无需改动。
+    [JsonPropertyName("lss")] public long? LoopStartSample { get; init; }   // 循环起点样本；null = 无循环点
+    [JsonPropertyName("les")] public long? LoopEndSample { get; init; }     // 循环终点样本；null = 循环到曲末
+    [JsonPropertyName("ds")] public long? DurationSample { get; init; }     // 整曲样本数
+    [JsonPropertyName("comp")] public string? Composer { get; init; }      // 作曲者
+    [JsonPropertyName("theme")] public string? Theme { get; init; }        // 昼夜主题（仅 TH07.5）
+
+    /// <summary>tf 系音轨：有循环点。</summary>
+    [JsonIgnore] public bool HasLoopSeconds => LoopStartSample is not null;
+
+    /// <summary>循环起点秒（由样本换算）。</summary>
+    [JsonIgnore] public double? LoopStartSec =>
+        LoopStartSample is null ? null : LoopStartSample.Value / (double)Rate;
+
+    /// <summary>循环终点秒；null 表示循环到曲末。</summary>
+    [JsonIgnore] public double? LoopEndSec =>
+        LoopEndSample is null ? null : LoopEndSample.Value / (double)Rate;
+
+    /// <summary>整曲时长秒。</summary>
+    [JsonIgnore] public double? DurationSec =>
+        DurationSample is null ? null : DurationSample.Value / (double)Rate;
+
+    /// <summary>
+    /// tf 一次性曲（有整曲长度但无循环点，如 ED / Staff Roll）。
+    /// 播放按 one-shot：一遍停、无 N/X/F；导出不受此影响 —— 整曲作为循环段正常吃 N/X/F。
+    /// </summary>
+    [JsonIgnore] public bool IsTfOneShot => DurationSample is not null && !HasLoopSeconds;
+
     [JsonPropertyName("alt")] public TrackDef? Alt { get; init; }    // 灵界版（目前仅 TH13 有）
 
     /// <summary>该音轨是否有灵界版可切换。</summary>
@@ -33,14 +64,20 @@ public sealed class TrackDef
     /// <summary>每秒字节数。</summary>
     [JsonIgnore] public long BytesPerSecond => (long)Rate * BlockAlign;
 
-    /// <summary>intro 时长。</summary>
-    [JsonIgnore] public TimeSpan IntroTime => BytesToTime(Intro);
+    /// <summary>intro 时长。tf 系从秒字段取（索引不存字节，字节路径对 tf 全是 0）。</summary>
+    [JsonIgnore] public TimeSpan IntroTime => HasLoopSeconds
+        ? TimeSpan.FromSeconds(LoopStartSec ?? 0)
+        : BytesToTime(Intro);
 
-    /// <summary>整轨时长（intro + loop 一遍）。</summary>
-    [JsonIgnore] public TimeSpan LengthTime => BytesToTime(Length);
+    /// <summary>整轨时长（intro + loop 一遍）。tf 系取 DurationSec。</summary>
+    [JsonIgnore] public TimeSpan LengthTime => HasLoopSeconds || DurationSec is not null
+        ? TimeSpan.FromSeconds(DurationSec ?? 0)
+        : BytesToTime(Length);
 
-    /// <summary>循环段时长。</summary>
-    [JsonIgnore] public TimeSpan LoopTime => BytesToTime(LoopLength);
+    /// <summary>循环段时长。tf 系：loop_end 缺省时循环到曲末。</summary>
+    [JsonIgnore] public TimeSpan LoopTime => HasLoopSeconds
+        ? TimeSpan.FromSeconds(Math.Max(0, (LoopEndSec ?? DurationSec ?? 0) - (LoopStartSec ?? 0)))
+        : BytesToTime(LoopLength);
 
     /// <summary>字节数换算成时长，按本轨格式。</summary>
     public TimeSpan BytesToTime(long bytes) =>
@@ -71,6 +108,17 @@ public sealed class GameDef
 
     [JsonPropertyName("source")] public string Source { get; init; } = "zwav"; // zwav | wav
     [JsonPropertyName("dir")] public string Dir { get; init; } = "";      // 常见目录名，仅作设置界面提示，不参与路径推断
+
+    /// <summary>
+    /// tf 系（黄昏作）容器文件相对路径，按覆盖优先序排列：后面的包覆盖前面包的同名条目
+    /// （如 th135.pak + th135b.pak）。主系列为 null。
+    /// 解析器按 source + 扩展名路由：tfsuica → SuicaReader（th075bgm.dat）；
+    /// tfogg 下 .dat → XorContainerReader，.pak / .cga / .cgb → pakReader。
+    /// </summary>
+    [JsonPropertyName("cont")] public List<string>? Containers { get; init; }
+
+    /// <summary>是否 tf 系（黄昏作）音源。</summary>
+    [JsonIgnore] public bool IsTfSource => Source is "tfsuica" or "tfogg";
     [JsonPropertyName("tracks")] public List<TrackDef> Tracks { get; init; } = new();
 
     /// <summary>
@@ -118,6 +166,7 @@ internal sealed class IndexDoc
 public static class TrackIndex
 {
     private const string ResourceName = "tracks.json.gz";
+    private const string TfResourceName = "tracks.tf.json.gz";   // 黄昏作索引；资源缺失时静默跳过
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -128,14 +177,48 @@ public static class TrackIndex
 
     static TrackIndex()
     {
-        using var asmStream = typeof(TrackIndex).Assembly.GetManifestResourceStream(ResourceName)
-            ?? throw new InvalidOperationException($"找不到内嵌资源 {ResourceName}，请确认 csproj 中 EmbeddedResource 的 LogicalName。");
-        using var gz = new GZipStream(asmStream, CompressionMode.Decompress);
-        var doc = JsonSerializer.Deserialize<IndexDoc>(gz, JsonOpts)
-            ?? throw new InvalidOperationException("内嵌索引解析结果为空。");
+        var games = new List<GameDef>(LoadDoc(ResourceName).Games);
 
-        Games = doc.Games;
+        // 黄昏作索引是增量资源：主系列先装好，tf 游戏按编号序混排进来
+        // （th07 → th075 → th08 ...，与 thwiki 惯例一致）。资源不存在（尚未生成/旧构建）
+        // 时静默跳过 —— 主系列行为完全不变；索引本身有问题也不拖死主系列。
+        var tfDoc = TryLoadDoc(TfResourceName);
+        if (tfDoc is not null) games.AddRange(tfDoc.Games);
+
+        Games = games.OrderBy(GameOrder).ThenBy(g => g.Id, StringComparer.OrdinalIgnoreCase).ToList();
         ById = Games.ToDictionary(g => g.Id, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IndexDoc LoadDoc(string resourceName)
+    {
+        using var asmStream = typeof(TrackIndex).Assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"找不到内嵌资源 {resourceName}，请确认 csproj 中 EmbeddedResource 的 LogicalName。");
+        using var gz = new GZipStream(asmStream, CompressionMode.Decompress);
+        return JsonSerializer.Deserialize<IndexDoc>(gz, JsonOpts)
+            ?? throw new InvalidOperationException($"内嵌索引 {resourceName} 解析结果为空。");
+    }
+
+    private static IndexDoc? TryLoadDoc(string resourceName)
+    {
+        if (typeof(TrackIndex).Assembly.GetManifestResourceStream(resourceName) is null) return null;
+        try { return LoadDoc(resourceName); }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// 作品排序键 = 编号值：th07 → 7，th075 → 7.5，th095 → 9.5，th128 → 12.8。
+    /// 主系列与黄昏作用同一把尺子，编号序即最终列表顺序。
+    /// </summary>
+    private static double GameOrder(GameDef g)
+    {
+        var digits = g.Id.Length > 2 && g.Id.StartsWith("th", StringComparison.OrdinalIgnoreCase)
+            ? g.Id[2..] : "";
+        return digits.Length switch
+        {
+            2 when double.TryParse(digits, out var a) => a,
+            3 when double.TryParse(digits, out var b) => b / 10.0,   // 075→7.5, 095→9.5, 128→12.8, 105→10.5
+            _ => 999,
+        };
     }
 
     /// <summary>全部作品，按作品顺序（TH06 → TH20）。</summary>

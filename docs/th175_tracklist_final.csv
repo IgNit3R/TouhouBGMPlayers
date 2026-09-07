@@ -1,0 +1,27 @@
+﻿order,wiki_section,title,file,composer,theme,loop,loop_start_sec,loop_end_sec,duration_sec,scope
+1,Title screen,水没した沈愁地獄,op.ogg,ziki_7,,Y,9.6,81.6,88.95,music_room
+2,Staff Roll,東方剛欲異聞,staff_roll.ogg,ziki_7,,N,,,140.6,music_room
+3,Ending,天理人欲,talk_ed.ogg,ziki_7,,Y,3.533,79.768,82.17,music_room
+4,Forest of Magic theme,魔法使いの憂鬱,talk_forest.ogg,ziki_7,,Y,16.338,86.156,87.43,music_room
+5,Rainbow Cavern of Earth Spirits theme,暗闇の風穴,talk_underground.ogg,ziki_7,,Y,8.822,121.763,135.57,music_room
+6,Former Hell theme,旧地獄街道を行く,talk_town.ogg,ziki_7,,Y,3.499,48.499,54.72,music_room
+7,Hell of Blazing Fires theme,業火マントル,talk_Inferno.ogg,ziki_7,,Y,10.499,115.624,123.73,music_room
+8,Underground Fusion Reactor theme,御柱の墓場,talk_reactor.ogg,ziki_7,,Y,13.166,113.006,119.58,music_room
+9,Sea of Petroleum theme,大地の底、剛欲の海,talk_oil.ogg,ziki_7,,Y,4.395,103.706,109.12,music_room
+10,Hell of Blazing Fires (Flooded) theme,不朽の曼珠沙華,talk_waterhell.ogg,ziki_7,,Y,20.666,100.666,105.91,music_room
+11,Scarlet Devil Mansion theme,魔法少女達の百年祭,talk_scarlet.ogg,ziki_7,,Y,9.527,164.115,165.44,music_room
+12,Reimu Hakurei's theme,少女綺想曲,reimu1.ogg,ziki_7,,Y,32.495,125.585,131.44,music_room
+13,Marisa Kirisame's theme,恋色マスタースパーク,marisa1.ogg,ziki_7,,Y,5.451,98.179,106.97,music_room
+14,Yamame Kurodani's theme,封じられた妖怪,yamame1.ogg,ziki_7,,Y,6.832,109.185,114.93,music_room
+15,Kogasa Tatara's theme,万年置き傘にご注意を,kogasa1.ogg,ziki_7,,Y,102.069,206.897,226.5,music_room
+16,Minamitsu Murasa's theme,キャプテンムラサ,murasa1.ogg,ziki_7,,Y,9.001,138.883,145.73,music_room
+17,Kanako Yasaka's theme,神さびた古戦場,kanako1.ogg,ziki_7,,Y,23.096,166.364,166.7,music_room
+18,Joon Yorigami and Shion Yorigami's theme,今宵は飄逸なエゴイスト　～ Egoistic Flowers.,jyoon1.ogg,ziki_7,,Y,25.775,185.305,191.98,music_room
+19,Yuugi Hoshiguma's theme,華のさかづき大江山,yuugi1.ogg,ziki_7,,Y,9.6,142.4,148.98,music_room
+20,Utsuho Reiuji's theme,霊知の太陽信仰,utuho1.ogg,ziki_7,,Y,5.268,108.905,113.4,music_room
+21,Kutaka Niwatari's theme,セラフィックチキン,niwatari1.ogg,ziki_7,,Y,11.179,110.679,118.12,music_room
+22,Flandre Scarlet's theme,U.N.オーエンは彼女なのか？,flandre1.ogg,ziki_7,,Y,14.785,139.492,151.14,music_room
+23,Land of the Back Door theme,もうドアには入れない,talk_door.ogg,ziki_7,,Y,5.997,128.997,138.1,music_room
+24,Okina Matara's theme,秘神マターラ,okina1.ogg,ziki_7,,Y,15.75,187.903,206.6,music_room
+25,Yuuma Toutetsu's first theme,強欲な獣のメメント,toutetu1.ogg,ZUN,,Y,2.144,255.003,264.78,music_room
+26,Yuuma Toutetsu's second theme,有機体全てのメメント　～ Memory of Fossil Energy.,toutetu2.ogg,ZUN,,Y,29.995,262.852,268.78,music_room
