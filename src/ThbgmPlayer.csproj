@@ -43,7 +43,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="NAudio" Version="3.0.1" />
+    <PackageReference Include="NAudio" Version="3.1.0" />
     <!-- OGG 解码。⚠️ 不要换回 NVorbis 0.10.x / 1.0.x：它们解码黄昏作的 OGG 时会丢 1024 样本块
          （页结构很碎：每页 22~29 个包且几乎每页跨页包），造成整轨漂移，循环点随之错位。
          VorbisPizza 是 NVorbis 的现代分支（命名空间仍是 NVorbis），同样纯托管、MIT 许可，
