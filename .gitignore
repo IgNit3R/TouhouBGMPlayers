@@ -28,3 +28,6 @@
 # addons\                     黄昏作容器解析器源码 + 桥接工程 addons.csproj
 # assets\icon\bgmplayer.ico   唯一的 src 外编译输入（csproj 相对路径引用）
 # README.md / LICENSE / .gitignore
+
+#----自动化构建，暂时不需要的
+.github/workflows/build.yml
