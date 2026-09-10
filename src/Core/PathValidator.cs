@@ -61,6 +61,18 @@ public static class PathValidator
     /// <summary>TH06 循环点文件（目前循环点已固化进索引，此文件仅作存在性提示）。</summary>
     public const string Th06PosFileName = "紅魔郷MD.DAT";
 
+    /// <summary>新典（TH06NC）音频数据根子目录；其下为 <see cref="NcBgmSubDirectory"/> 等。</summary>
+    public const string NcDataSubDirectory = "data";
+
+    /// <summary>新典主版（新编曲）子目录。</summary>
+    public const string NcBgmSubDirectory = "bgm";
+
+    /// <summary>新典 Alt（原编曲）子目录。</summary>
+    public const string NcAltSubDirectory = "bgm2";
+
+    /// <summary>新典容器轻量探测用的第一首文件名。</summary>
+    public const string NcFirstTrackFileName = "th06_01.opus";
+
     private const string Magic = "ZWAV";
     private const int HeaderSize = 16;
 
@@ -72,6 +84,9 @@ public static class PathValidator
 
         if (game.IsTfSource)
             return ValidateTf(game, path);
+
+        if (game.IsNcSource)
+            return ValidateNc(game, path);
 
         return game.IsWavSource ? ValidateWav(game, path) : ValidateZwav(game, path);
     }
@@ -133,6 +148,53 @@ public static class PathValidator
             return ValidateResult.Warn($"缺少补丁容器 {string.Join("、", missing)}（将只用主包内容）");
 
         return ValidateResult.Ok(headMsg);
+    }
+
+    // ---------- 新典（TH06NC）：data\bgm / data\bgm2 下的自定义 Opus 容器 ----------
+
+    /// <summary>
+    /// 新典路径指到游戏根目录。主版（新编曲）在 data\bgm、Alt（原编曲）在 data\bgm2。
+    /// 主版缺失 → Fail；Alt 缺失 → Warn（主版仍可播，仅 Alt 不可用）。
+    /// 自定义容器：40 字节头 + N×488 定长记录，做一次轻量结构校验（不阻断，仅降级为 Warn）。
+    /// </summary>
+    private static ValidateResult ValidateNc(GameDef game, string path)
+    {
+        if (!Directory.Exists(path))
+            return ValidateResult.Fail("目录不存在");
+
+        string bgmPath = Path.Combine(path, NcDataSubDirectory, NcBgmSubDirectory, NcFirstTrackFileName);
+        string altPath = Path.Combine(path, NcDataSubDirectory, NcAltSubDirectory, NcFirstTrackFileName);
+
+        if (!File.Exists(bgmPath))
+            return ValidateResult.Fail($"找不到 {NcDataSubDirectory}\\{NcBgmSubDirectory}\\{NcFirstTrackFileName}");
+
+        string? reason = null;
+        try
+        {
+            long size = new FileInfo(bgmPath).Length;
+            long body = size - 40;
+            if (size < 40 + 488 || body % 488 != 0)
+                reason = "容器长度不符（可能版本不一致）";
+            else
+            {
+                using var fs = File.OpenRead(bgmPath);
+                Span<byte> rec = stackalloc byte[4];
+                fs.Seek(40, SeekOrigin.Begin);
+                if (fs.Read(rec) == 4 && System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(rec) != 480)
+                    reason = "记录头包长不是 480（可能版本不一致）";
+            }
+        }
+        catch (Exception ex)
+        {
+            return ValidateResult.Fail($"读取失败：{ex.Message}");
+        }
+
+        if (!File.Exists(altPath))
+            return ValidateResult.Warn($"缺少 {NcDataSubDirectory}\\{NcAltSubDirectory}\\（原编曲版），Alt 不可用");
+        if (reason is not null)
+            return ValidateResult.Warn(reason);
+
+        return ValidateResult.Ok($"{game.Tracks.Count} 首 · opus");
     }
 
     // ---------- 常规 20 作：thbgm.dat ----------

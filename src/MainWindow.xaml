@@ -60,17 +60,21 @@
                 BorderBrush="{StaticResource Border}" BorderThickness="0,1" Padding="10,7">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="260"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>   <!-- 0 标签 -->
+                    <ColumnDefinition Width="260"/>    <!-- 1 播放列表下拉 -->
+                    <ColumnDefinition Width="Auto"/>   <!-- 2 副版切换按钮（数据驱动，默认隐藏） -->
+                    <ColumnDefinition Width="*"/>      <!-- 3 弹性空白 -->
+                    <ColumnDefinition Width="Auto"/>   <!-- 4 曲目摘要 -->
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="播放列表" VerticalAlignment="Center"
                            Margin="0,0,10,0" Foreground="{StaticResource TextDim}"/>
                 <ComboBox Grid.Column="1" x:Name="PlaylistCombo"
                           SelectionChanged="PlaylistCombo_SelectionChanged"
                           VerticalContentAlignment="Center" Height="26"/>
-                <TextBlock Grid.Column="3" x:Name="PlaylistSummary"
+                <Button Grid.Column="2" x:Name="VariantButton" Visibility="Collapsed"
+                        Click="Variant_Click" MinWidth="64" Height="26" Margin="8,0,0,0"
+                        ToolTip="在新编曲与原编曲之间切换"/>
+                <TextBlock Grid.Column="4" x:Name="PlaylistSummary"
                            VerticalAlignment="Center" Foreground="{StaticResource TextDim}"/>
             </Grid>
         </Border>

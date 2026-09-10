@@ -10,7 +10,7 @@ namespace ThbgmPlayer.UI;
 
 /// <summary>
 /// 导出对话框。用代码搭建而不是 XAML —— 内容固定、不需要样式复用，
-/// 也免得为「灵界版选项按曲目有无决定是否显示」这种动态部分去写触发器。
+/// 也免得为「版本选项按选中曲目的作品开放/灰掉」这种动态部分去写触发器。
 ///
 /// 三个数值字段各自独立地「跟随播放参数 / 覆盖」（DESIGN_v3.md §8.1）：
 /// 勾上跟随就存 null，实时取播放参数的值；取消勾选并填值则固定下来，
@@ -28,7 +28,10 @@ public static class ExportDialog
     private static readonly Media.Brush Bd = Theme.Get("Border", "#FF3F3F45");
 
     /// <param name="items">要导出的曲目，允许跨作品。</param>
-    /// <param name="initialAlt">灵界版的初始勾选；没有曲目带灵界版时不显示这一项。</param>
+    /// <param name="initialAlt">
+    /// 初始勾选副版。版本行固定 4 项（原版 / 灵界版 / 新典 / 原典），按选中曲目的作品开放，
+    /// 未开放的显示但灰掉。为 true 时勾第一个可用的副版选项（原典 → 灵界版），否则勾主版（原版 → 新典）。
+    /// </param>
     public static void Show(Window owner,
                             IReadOnlyList<(GameDef Game, TrackDef Track)> items,
                             bool initialAlt = false)
@@ -79,31 +82,55 @@ public static class ExportDialog
         AddParamRow(paramGrid, 1, "额外秒数 X", xBox, xFollow, "N 遍播满后再续播多少秒");
         AddParamRow(paramGrid, 2, "淡出秒数 F", fBox, fFollow, "额外加在最后的一段，边播边淡出");
 
-        // ---------- 版本（仅当选中曲目里有带灵界版的） ----------
-        RadioButton? rbMain = null, rbAlt = null;
-        UIElement? versionRow = null;
+        // ---------- 版本（固定 4 项：原版 / 灵界版 / 新典 / 原典） ----------
+        // 主系列的「主版/副版」在 TH13 叫「原版/灵界版」，在带标签作品（TH06NC）叫「新典/原典」。
+        // 4 项始终显示，按选中曲目的作品开放；未开放的显示但灰掉（不隐藏）。
+        // 判定对整批选中曲目求或：只要有一首能用某选项就开放该选项。
+        bool hasPlain  = items.Any(x => !x.Game.HasVariantLabels);                    // 原版
+        bool hasOldAlt = items.Any(x => !x.Game.HasVariantLabels && x.Track.HasAlt);  // 灵界版
+        bool hasNc     = items.Any(x =>  x.Game.HasVariantLabels);                    // 新典
+        bool hasNcAlt  = items.Any(x =>  x.Game.HasVariantLabels && x.Track.HasAlt);  // 原典
 
-        if (items.Any(x => x.Track.HasAlt))
+        // 新典 / 原典 的文案取索引标签（数据驱动，将来出新典作品无需改代码）；缺省回退固定字串。
+        GameDef? labeledGame = items.FirstOrDefault(x => x.Game.HasVariantLabels).Game;
+        string ncMainLabel = labeledGame?.MainLabel ?? "新典";
+        string ncAltLabel = labeledGame?.AltLabel ?? "原典";
+
+        RadioButton VerRadio(string text, bool enabled) => new()
         {
-            rbMain = new RadioButton { Content = "主版", IsChecked = !initialAlt, Foreground = Fg, Margin = new Thickness(0, 0, 16, 0) };
-            rbAlt = new RadioButton { Content = "霊界版", IsChecked = initialAlt, Foreground = Fg };
+            Content = text, IsEnabled = enabled,
+            Foreground = enabled ? Fg : Dim,
+            Margin = new Thickness(0, 0, 16, 0),
+        };
 
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
-            row.Children.Add(new TextBlock { Text = "版本", Width = 110, Foreground = Dim, VerticalAlignment = VerticalAlignment.Center });
-            row.Children.Add(rbMain);
-            row.Children.Add(rbAlt);
+        var rbPlain = VerRadio("原版", hasPlain);
+        var rbRei = VerRadio("灵界版", hasOldAlt);
+        var rbNc = VerRadio(ncMainLabel, hasNc);
+        var rbNcAlt = VerRadio(ncAltLabel, hasNcAlt);
 
-            int lacking = items.Count(x => !x.Track.HasAlt);
-            if (lacking > 0)
-                row.Children.Add(new TextBlock
-                {
-                    Text = $"（其中 {lacking} 首没有霊界版，将导出主版）",
-                    Foreground = Dim, VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(16, 0, 0, 0),
-                });
+        // 初始勾选：initialAlt → 第一个可用副版（原典 → 灵界版），否则第一个可用主版（原版 → 新典）。
+        // 兜底数组末尾带上主版选项，保证至少能勾到一个（每个作品要么带标签要么不带，主版必有一项可用）。
+        var picked = (initialAlt
+                ? new[] { rbNcAlt, rbRei, rbPlain, rbNc }
+                : new[] { rbPlain, rbNc, rbNcAlt, rbRei })
+            .FirstOrDefault(r => r.IsEnabled);
+        if (picked is not null) picked.IsChecked = true;
 
-            versionRow = row;
-        }
+        var versionRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        versionRow.Children.Add(new TextBlock { Text = "版本", Width = 110, Foreground = Dim, VerticalAlignment = VerticalAlignment.Center });
+        versionRow.Children.Add(rbPlain);
+        versionRow.Children.Add(rbRei);
+        versionRow.Children.Add(rbNc);
+        versionRow.Children.Add(rbNcAlt);
+
+        int lacking = items.Count(x => !x.Track.HasAlt);
+        if (lacking > 0 && (hasOldAlt || hasNcAlt))
+            versionRow.Children.Add(new TextBlock
+            {
+                Text = $"（其中 {lacking} 首没有副版，将导出主版）",
+                Foreground = Dim, VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(16, 0, 0, 0),
+            });
 
         // ---------- 输出目录 ----------
         var dirBox = new TextBox
@@ -142,7 +169,7 @@ public static class ExportDialog
         root.Children.Add(listBox);
         root.Children.Add(new TextBlock { Text = "时间线   intro → loop × N → 额外 X 秒 → 淡出 F 秒", Foreground = Dim, Margin = new Thickness(0, 16, 0, 0) });
         root.Children.Add(paramGrid);
-        if (versionRow is not null) root.Children.Add(versionRow);
+        root.Children.Add(versionRow);   // 版本行始终显示
         root.Children.Add(new TextBlock { Text = "输出到", Foreground = Dim, Margin = new Thickness(0, 14, 0, 0) });
         root.Children.Add(dirGrid);
         root.Children.Add(progress);
@@ -203,14 +230,14 @@ public static class ExportDialog
             AppSettings.Current.Save();
 
             var p = WavExporter.ResolveParams();
-            bool useAlt = rbAlt?.IsChecked == true;
+            bool useAlt = rbRei.IsChecked == true || rbNcAlt.IsChecked == true;   // 任一「副版」选项被选中
 
             running = true;
             ok.IsEnabled = false;
             browse.IsEnabled = false;
             nBox.IsEnabled = xBox.IsEnabled = fBox.IsEnabled = false;
             nFollow.IsEnabled = xFollow.IsEnabled = fFollow.IsEnabled = false;
-            if (rbMain is not null) rbMain.IsEnabled = rbAlt!.IsEnabled = false;
+            rbPlain.IsEnabled = rbRei.IsEnabled = rbNc.IsEnabled = rbNcAlt.IsEnabled = false;
             cancel.Content = "中止";
             progress.Visibility = Visibility.Visible;
 
@@ -257,7 +284,11 @@ public static class ExportDialog
                 xBox.IsEnabled = xFollow.IsChecked != true;
                 fBox.IsEnabled = fFollow.IsChecked != true;
                 nFollow.IsEnabled = xFollow.IsEnabled = fFollow.IsEnabled = true;
-                if (rbMain is not null) rbMain.IsEnabled = rbAlt!.IsEnabled = true;
+                // 恢复各自的原始开放状态（不是一律 true —— 未开放的选项要保持灰掉）
+                rbPlain.IsEnabled = hasPlain;
+                rbRei.IsEnabled = hasOldAlt;
+                rbNc.IsEnabled = hasNc;
+                rbNcAlt.IsEnabled = hasNcAlt;
                 cancel.Content = "关闭";
                 return;
             }

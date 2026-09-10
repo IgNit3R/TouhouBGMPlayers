@@ -154,7 +154,7 @@ public partial class MainWindow : Window
         };
 
         UpdateTransportEnabled();
-        UpdateAltButton();
+        RefreshVariantControls();
         UpdateFavoriteButton();
         UpdatePlaylistMenus();
 
@@ -347,6 +347,7 @@ public partial class MainWindow : Window
         UpdatePlaylistMenus();
         UpdateFavoriteButton();
         UpdatePlayingRow();
+        RefreshVariantControls();   // 换列表后两个按钮一起刷新（显隐跟列表走）
     }
 
     /// <summary>把「正在播放」标记刷到曲目表上。换曲、换列表、切灵界版后都要调。</summary>
@@ -429,20 +430,37 @@ public partial class MainWindow : Window
         var game = TrackIndex.ById[row.GameId];
         var track = game.Tracks.First(t => t.No == row.No);
 
-        // 已经选中的就是正在播的那首时不覆盖面板，避免选中态把播放信息冲掉
+        // 已经选中的就是正在播的那首时：把面板刷回「播放信息」，
+        // 否则会残留上一行/上一首的内容（用户报过：移回正在播放那行，信息回不来）
         if (_engine?.Current != row.Ref)
         {
             NowPlayingText.Text = row.DisplayText;
             NowPlayingGame.Text = game.Name;
             _nowDetail = Describe(track);
-            // 选中的不是正在播的那首，所以不带灵界版前缀
+            // 选中的不是正在播的那首，所以不带副版前缀
             NowPlayingDetail.Text = _nowDetail;
+        }
+        else
+        {
+            ShowPlayingPanel(game, track);
         }
 
         // 灵界版按钮：仅当前正在播的这首有灵界版时可用
         AltButton.IsEnabled = track.HasAlt && row.IsAvailable && _engine?.Current == row.Ref;
 
         UpdateFavoriteButton();
+    }
+
+    /// <summary>
+    /// 把底部面板刷成指定的「正在播放」曲目（曲名行 / 作品全名 / 详情，详情带副版前缀）。
+    /// 换曲与「光标移回正在播放那行」都走这里，避免两处各写一份而漂移。
+    /// </summary>
+    private void ShowPlayingPanel(GameDef game, TrackDef track)
+    {
+        NowPlayingText.Text = $"{game.ShortName} - {track.No:00} - {track.Title}";
+        NowPlayingGame.Text = game.Name;   // 全名（含副标题），主标题那行已经用过 ShortName
+        _nowDetail = Describe(track);
+        RefreshNowPlaying();
     }
 
     private void TrackGrid_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
@@ -489,17 +507,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        NowPlayingText.Text = $"{game.ShortName} - {track.No:00} - {track.Title}";
-        NowPlayingGame.Text = game.Name;   // 全名（含副标题），主标题那行已经用过 ShortName
-        _nowDetail = Describe(track);
-        RefreshNowPlaying();
+        ShowPlayingPanel(game, track);
 
         AppSettings.Current.LastPlayed.Game = game.Id;
         AppSettings.Current.LastPlayed.TrackNo = track.No;
 
         UpdateTransportEnabled();
         UpdatePlayButton();
-        UpdateAltButton();
+        RefreshVariantControls();
         UpdateFavoriteButton();
         UpdatePlayingRow();
 
@@ -1097,6 +1112,9 @@ public partial class MainWindow : Window
             TrackGrid.ScrollIntoView(rows[last + 1]);
     }
 
+    /// <summary>播放列表行的副版切换按钮：复用霊界版那套切换逻辑（预读配对、交叉淡化、前缀刷新都照旧）。</summary>
+    private void Variant_Click(object sender, RoutedEventArgs e) => Alt_Click(sender, e);
+
     private void Alt_Click(object sender, RoutedEventArgs e)
     {
         if (_engine?.Current is not TrackRef cur || cur.IsEmpty) return;
@@ -1116,7 +1134,7 @@ public partial class MainWindow : Window
         }
 
         // 曲名保持主版不变（用户定：列表与面板都不跳字），只在按钮和详情前缀上体现状态
-        UpdateAltButton();
+        RefreshVariantControls();
         RefreshNowPlaying();
 
         // 切过去之后把「另一版本」预读上，来回 A/B 对比也是零等待
@@ -1130,31 +1148,164 @@ public partial class MainWindow : Window
         $"总长 {TrackRow.FormatTime(track.LengthTime)}";
 
     /// <summary>按当前灵界版状态重拼曲目信息。前缀是算出来的，不会叠加。</summary>
-    private void RefreshNowPlaying() =>
-        NowPlayingDetail.Text = _engine?.UsingAlt == true ? "霊界版 · " + _nowDetail : _nowDetail;
-
-    private void UpdateAltButton()
+    /// <summary>
+    /// 按当前副版状态重拼曲目信息（前缀是算出来的，不会叠加）。
+    /// 前缀取该作品自己的副版名（如新典的「原典」）；无标签的作品沿用「霊界版」。
+    /// </summary>
+    private void RefreshNowPlaying()
     {
-        if (_engine?.Current is not TrackRef cur || cur.IsEmpty)
+        string prefix = "霊界版";
+        if (_engine?.Current is TrackRef cur && !cur.IsEmpty &&
+            TrackIndex.ById.TryGetValue(cur.GameId, out var g) && g.HasVariantLabels)
         {
+            prefix = g.AltLabel ?? prefix;
+        }
+
+        NowPlayingDetail.Text = _engine?.UsingAlt == true ? prefix + " · " + _nowDetail : _nowDetail;
+    }
+
+    /// <summary>
+    /// 汇总「当前播放列表」涉及的作品（去重，保持首次出现顺序）。
+    /// 显隐跟列表走、可点性跟播放曲目走 —— 这里是前者的数据源。
+    /// 收藏 / 自定义列表按条目里的 GameId 去重；SelectedItem 未就绪等取不到时，
+    /// 回退到正在播放曲目的作品（构造期安全，不抛异常）。
+    /// </summary>
+    private List<GameDef> ContextGames()
+    {
+        var games = new List<GameDef>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string? id)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+            if (TrackIndex.ById.TryGetValue(id, out var g) && seen.Add(g.Id)) games.Add(g);
+        }
+
+        switch (PlaylistCombo?.SelectedItem as PlaylistItem)
+        {
+            case PlaylistItem { GameId: string gid }:
+                Add(gid);
+                break;
+            case PlaylistItem { IsFavorites: true }:
+                foreach (var f in PlaylistStore.Favorites) Add(f.GameId);
+                break;
+            case PlaylistItem { Custom: CustomPlaylist list }:
+                foreach (var s in list.Items) Add(TrackRef.Parse(s).GameId);
+                break;
+            default:
+                // SelectedItem 尚未就绪 / 非列表项：回退到正在播放曲目的作品
+                if (_engine?.Current is TrackRef cur && !cur.IsEmpty) Add(cur.GameId);
+                break;
+        }
+
+        return games;
+    }
+
+    /// <summary>
+    /// 刷新控制副版/灵界版的两个按钮。**两个按钮必须同一时机一起刷**，
+    /// 否则会出现「播过新典后再切到 TH13，旧按钮没被刷回来」这类只刷一个的回归。
+    /// 调用时机：构造期、换列表（LoadPlaylist 末尾）、换曲（PlayTrack）、切副版（Alt_Click）。
+    /// </summary>
+    private void RefreshVariantControls()
+    {
+        var context = ContextGames();
+        UpdateAltButton(context);
+        UpdateVariantButton(context);
+    }
+
+    /// <summary>
+    /// 旧「霊界版」按钮（播放控件行）。显隐跟列表走：列表内存在「有副版且不带标签」的作品
+    /// （今天即 TH13）时显示，否则隐藏。可点性跟正在播放的曲目走：仅当在播该作品且有副版的曲目时可用。
+    /// 禁用 / 未激活一律走默认（隐式）按钮样式，只有切到灵界版时才套 AltActiveButton。
+    /// </summary>
+    private void UpdateAltButton(List<GameDef> context)
+    {
+        bool show = context.Any(g => !g.HasVariantLabels && g.Tracks.Any(t => t.HasAlt));
+        if (!show)
+        {
+            AltButton.Visibility = Visibility.Collapsed;
             AltButton.IsEnabled = false;
-            AltButton.Content = "霊界版";
-            AltButton.ClearValue(StyleProperty);   // 落回应用级隐式 Button 样式
+            AltButton.ClearValue(StyleProperty);
             return;
         }
 
-        bool hasAlt = TrackIndex.ById.TryGetValue(cur.GameId, out var game) &&
-                      game.Tracks.FirstOrDefault(t => t.No == cur.TrackNo)?.HasAlt == true;
+        AltButton.Visibility = Visibility.Visible;
 
-        AltButton.IsEnabled = hasAlt;
-        AltButton.Content = _engine.UsingAlt ? "霊界版 ✓" : "霊界版";
+        // 可点性：正在播放的曲目落在「这类（有副版、无标签）作品」上，且该曲有副版
+        TrackDef? track = null;
+        if (_engine?.Current is TrackRef cur && !cur.IsEmpty)
+        {
+            var g = context.FirstOrDefault(x => !x.HasVariantLabels &&
+                                                string.Equals(x.Id, cur.GameId, StringComparison.OrdinalIgnoreCase));
+            track = g?.Tracks.FirstOrDefault(t => t.No == cur.TrackNo);
+        }
 
-        // 切到灵界版：换上紫色激活样式（DarkTheme.xaml 里的 AltActiveButton）。
+        if (track is null || !track.HasAlt)
+        {
+            AltButton.IsEnabled = false;
+            AltButton.Content = "霊界版";
+            AltButton.ClearValue(StyleProperty);
+            return;
+        }
+
+        AltButton.IsEnabled = true;
+        AltButton.Content = _engine!.UsingAlt ? "霊界版 ✓" : "霊界版";
+
+        // 切到灵界版：换上紫色激活样式（DarkTheme.xaml 里的 AltActiveButton）；
         // 换回主版：清掉本地 Style，重新走应用级隐式 Button 样式。
         if (_engine.UsingAlt)
             AltButton.Style = (Style)FindResource("AltActiveButton");
         else
             AltButton.ClearValue(StyleProperty);
+    }
+
+    /// <summary>
+    /// 新典这类「带标签」作品的副版切换按钮（播放列表行）。
+    /// 显隐跟列表走：列表内存在带标签作品（<see cref="GameDef.HasVariantLabels"/>）时显示，否则隐藏。
+    /// 可点性跟正在播放的曲目走：
+    ///   在播带标签作品的曲目且有副版 → 可点，文案/配色随主副版本；
+    ///   在播该作品但该曲无副版、或没在播该作品 → 可见但禁用，主版文案 + 默认样式。
+    /// </summary>
+    private void UpdateVariantButton(List<GameDef> context)
+    {
+        var labeled = context.Where(g => g.HasVariantLabels).ToList();
+        if (labeled.Count == 0)
+        {
+            VariantButton.Visibility = Visibility.Collapsed;
+            VariantButton.IsEnabled = false;
+            VariantButton.ClearValue(StyleProperty);
+            return;
+        }
+
+        VariantButton.Visibility = Visibility.Visible;
+
+        // 正在播放的曲目是否恰好落在某个带标签作品里
+        GameDef? playGame = null;
+        TrackDef? track = null;
+        if (_engine?.Current is TrackRef cur && !cur.IsEmpty)
+        {
+            playGame = labeled.FirstOrDefault(x => string.Equals(x.Id, cur.GameId, StringComparison.OrdinalIgnoreCase));
+            track = playGame?.Tracks.FirstOrDefault(t => t.No == cur.TrackNo);
+        }
+
+        // 统一规则：禁用 ⇒ 默认（隐式）按钮样式；可用 ⇒ 才上版本配色。
+        if (playGame is null || track is null || !track.HasAlt)
+        {
+            // 没在播该作品 / 在播但该曲无副版：可见但禁用，主版文案，回默认样式。
+            // 文案取上下文中第一个带标签作品（今天只有 th06nc，不歧义；将来多作品取第一个即可）。
+            VariantButton.IsEnabled = false;
+            VariantButton.Content = playGame is not null && track is not null
+                ? playGame.MainLabel
+                : labeled[0].MainLabel;
+            VariantButton.ClearValue(StyleProperty);
+            return;
+        }
+
+        // 在播该作品且有副版：可点，文案/配色随主副版本。
+        bool useAltStyle = _engine!.UsingAlt;
+        VariantButton.IsEnabled = true;
+        VariantButton.Content = useAltStyle ? playGame.AltLabel : playGame.MainLabel;
+        VariantButton.Style = (Style)FindResource(useAltStyle ? "VariantAltButton" : "VariantMainButton");
     }
 
     private void LoopModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)

@@ -1,6 +1,7 @@
 ﻿using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Shapes;
 using ThbgmPlayer.Core;
 using ThbgmPlayer.Data;
 using Media = System.Windows.Media;
@@ -16,17 +17,35 @@ namespace ThbgmPlayer.UI;
 /// </summary>
 public static class AboutDialog
 {
-    /// <summary>(名称, 版本, 许可)</summary>
-    private static (string Name, string Version, string License)[] Dependencies()
+    /// <summary>
+    /// 运行时版本。**不是**构建用的 SDK 版本 —— SDK（10.0.401）程序里没有任何地方记录它，
+    /// 想显示得在 csproj 里另注入。程序是框架依赖发布（SelfContained=false），所以这里取到的
+    /// 是「跑这个 exe 的机器上装的那套 .NET」版本，换机器会变，这是预期行为。
+    /// Microsoft.WindowsDesktop.App（WPF / WinForms）随基础运行时成套发，同号。
+    /// </summary>
+    private static string RuntimeVersion() => Environment.Version.ToString();
+
+    /// <summary>
+    /// 外部依赖树。(深度, 是否末项, 名称, 版本, 许可)。
+    /// 深度 0 = 顶层，1 = 上一行的子项；「是否末项」决定树形导线画 ├ 还是 └，**只在深度 &gt; 0 时有意义**。
+    ///
+    /// 只列**直接引用**的第三方包；名字必须是程序集简单名（AssemblyVersionOf 走 AppDomain
+    /// 扫描 + dll 元数据）。传递依赖不列，属实现细节 —— 也就是 NAudio 自己带出来的
+    /// NAudio.Asio / Dmo / Midi / WinForms，以及 NAudio.Core 带出来的 System.Numerics.Tensors。
+    /// 运行时不算「依赖」，它单独占信息区一行（见 Show）。
+    /// </summary>
+    private static (int Depth, bool IsLast, string Name, string Version, string License)[] Dependencies()
     {
-        // 不在这里塞说明行 —— 那是注释不是依赖。说明行单独渲染并撑满整宽。
-        return new (string, string, string)[]
+        return new (int, bool, string, string, string)[]
         {
-            (".NET", Environment.Version.ToString(), "MIT"),
-            ("NAudio", AssemblyVersionOf("NAudio"), "MIT"),
-            ("NAudio.Core", AssemblyVersionOf("NAudio.Core"), "MIT"),
-            ("WindowsDesktop（WPF）", "随 .NET", "MIT"),
-            ("Windows Forms", "随 .NET", "MIT"),
+            // 输出链路真正调用的是 WasapiPlayer / WasapiPlayerBuilder，它们在 NAudio.Wasapi 里
+            (0, false, "NAudio",        AssemblyVersionOf("NAudio"),        "MIT"),
+            (1, false, "NAudio.Core",   AssemblyVersionOf("NAudio.Core"),   "MIT"),
+            (1, true,  "NAudio.Wasapi", AssemblyVersionOf("NAudio.Wasapi"), "MIT"),
+            // 黄昏作 OGG 解码（NVorbis 的现代分支，命名空间仍是 NVorbis）
+            (0, false, "VorbisPizza",   AssemblyVersionOf("VorbisPizza"),   "MIT"),
+            // 新典 Opus 解码，纯托管
+            (0, false, "Concentus",     AssemblyVersionOf("Concentus"),     "BSD-3-Clause"),
         };
     }
 
@@ -34,14 +53,30 @@ public static class AboutDialog
     {
         try
         {
-            var v = Assembly.Load(name).GetName().Version;
-            return v is null ? "—" : v.ToString(3);
+            // 已经加载过的直接读，省一次磁盘 IO
+            foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (!string.Equals(a.GetName().Name, name, StringComparison.OrdinalIgnoreCase)) continue;
+                var v0 = a.GetName().Version;
+                if (v0 is not null) return v0.ToString(3);
+            }
+
+            // 没加载过就读 dll 的元数据 —— AssemblyName.GetAssemblyName 只解析文件头，
+            // 不会真的把程序集载进进程（VorbisPizza / Concentus 只在播对应作品时才用得上，
+            // 冷启动就开「关于」不该为了显示版本号把它们加载进来）。
+            var path = System.IO.Path.Combine(AppContext.BaseDirectory, name + ".dll");
+            if (System.IO.File.Exists(path))
+            {
+                var v = AssemblyName.GetAssemblyName(path).Version;
+                if (v is not null) return v.ToString(3);
+            }
         }
         catch
         {
-            // 程序集没被加载（还没用到）时显示不出版本，不算错误
-            return "—";
+            // 取不到版本号不算错误，显示占位符即可，不能让对话框打不开
         }
+
+        return "—";
     }
 
     /// <summary>构建时间。取不到注入的元数据就退回 exe 的修改时间。</summary>
@@ -95,22 +130,74 @@ public static class AboutDialog
                 Margin = new Thickness(0, 3, 0, 0),
             };
 
-        // ---- 依赖表 ----
+        // ---- 依赖树 ----
+        // 树形导线用 1px 矩形画，不用 ├ └ 制表符：Consolas 对 U+2500 区段的覆盖没保证，
+        // WPF 走字体回退后字宽可能和 Consolas 不一致，名字起点就会漂。
         var depRows = new StackPanel();
-        foreach (var (name, ver, lic) in Dependencies())
+        foreach (var (depth, isLast, name, ver, lic) in Dependencies())
         {
+            bool child = depth > 0;
+
+            // 顶层行**不预留**导线列：否则整列名字会被推右 18px，看着像"没靠左"。
+            // 只有子项才占导线列并缩进。col0 + col1 恒为 210，所以版本/许可两列
+            // 在任何行上起点都一样，仍然对齐。
             var g = new Grid { Margin = new Thickness(0, 2, 0, 2) };
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(210) });
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(child ? 18 : 0) });  // 树形导线
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(child ? 192 : 210) }); // 名称
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });  // 版本
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-            var c0 = new TextBlock { Text = name, Foreground = dim, FontFamily = new Media.FontFamily("Consolas") };
+            if (child)
+            {
+                // 两行等分的网格：竖线贯穿整行（末项只贯穿上半，到下沿的横线为止），
+                // 横线跨两行居中，正好接在中线上。这样无论行高多少都对齐。
+                var guide = new Grid();
+                guide.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+                guide.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+                var vertical = new Rectangle
+                {
+                    Width = 1,
+                    Fill = dim,
+                    Opacity = 0.45,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    VerticalAlignment = VerticalAlignment.Stretch,
+                    Margin = new Thickness(5, 0, 0, 0),
+                };
+                Grid.SetRow(vertical, 0);
+                if (!isLast) Grid.SetRowSpan(vertical, 2);
+
+                var horizontal = new Rectangle
+                {
+                    Height = 1,
+                    Width = 8,
+                    Fill = dim,
+                    Opacity = 0.45,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(5, 0, 0, 0),
+                };
+                Grid.SetRowSpan(horizontal, 2);
+
+                guide.Children.Add(vertical);
+                guide.Children.Add(horizontal);
+                Grid.SetColumn(guide, 0);
+                g.Children.Add(guide);
+            }
+
+            var c0 = new TextBlock
+            {
+                Text = name,
+                Foreground = dim,
+                FontFamily = new Media.FontFamily("Consolas"),
+                Margin = new Thickness(child ? 4 : 0, 0, 0, 0),
+            };
             var c1 = new TextBlock { Text = ver, Foreground = dim, FontFamily = new Media.FontFamily("Consolas") };
             var c2 = new TextBlock { Text = lic, Foreground = dim, FontFamily = new Media.FontFamily("Consolas") };
 
-            Grid.SetColumn(c0, 0);
-            Grid.SetColumn(c1, 1);
-            Grid.SetColumn(c2, 2);
+            Grid.SetColumn(c0, 1);
+            Grid.SetColumn(c1, 2);
+            Grid.SetColumn(c2, 3);
             g.Children.Add(c0);
             g.Children.Add(c1);
             g.Children.Add(c2);
@@ -119,7 +206,9 @@ public static class AboutDialog
 
         var depScroll = new ScrollViewer
         {
-            MaxHeight = 150,
+            // 当前 5 行（NAudio 带两个子项 + 两个解码器）只要 ≈ 110px，取 180 留足余量。
+            // 再往上加依赖时这里会自动出滚动条，不会把窗口撑破。
+            MaxHeight = 180,
             Content = depRows,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
@@ -151,9 +240,23 @@ public static class AboutDialog
         root.Children.Add(Info("东方ProjectBGM播放器", fg, 15, bold: true));
         root.Children.Add(new TextBlock { Text = $"版本 {AppPaths.AppVersion}", Foreground = em, Margin = new Thickness(0, 4, 0, 0) });
         root.Children.Add(new TextBlock { Text = $"构建 {BuildTime()}", Foreground = dim, Margin = new Thickness(0, 2, 0, 0) });
+        // 「灵界版」只算**没有** MainLabel/AltLabel 的那些作品（目前只有 TH13）。
+        // 有标签的作品（新典 ↔ 原典）虽然也走同一套副版机制，但跟灵界版有本质区别，
+        // 不能并进来计数 —— 之前直接 Sum(AltCount) 得出 30，等于把新典的 17 首原典版也算成灵界版。
+        int legacyAlt = TrackIndex.Games.Where(g => !g.HasVariantLabels).Sum(g => g.AltCount);
+
         root.Children.Add(new TextBlock
         {
-            Text = $"内嵌曲目 {TrackIndex.TotalTracks} 首 / {TrackIndex.Games.Count} 部作品（另含 {TrackIndex.Games.Sum(g => g.AltCount)} 首灵界版）",
+            Text = $"内嵌曲目 {TrackIndex.TotalTracks} 首 / {TrackIndex.Games.Count} 部作品"
+                 + (legacyAlt > 0 ? $"（另含 {legacyAlt} 首灵界版）" : ""),
+            Foreground = dim,
+            Margin = new Thickness(0, 2, 0, 0),
+        });
+        // 运行时占信息区一行，不进下面的依赖树 —— 它不是第三方依赖，而是「跑这个 exe 需要装什么」。
+        // 末尾的 ※ 与下方说明行呼应：那个说明注的就是 WinForms 的使用范围。
+        root.Children.Add(new TextBlock
+        {
+            Text = $"运行时 .NET Desktop Runtime {RuntimeVersion()}（含 WPF / Windows Forms※）",
             Foreground = dim,
             Margin = new Thickness(0, 2, 0, 0),
         });
@@ -184,9 +287,12 @@ public static class AboutDialog
             Title = "关于",
             Icon = Theme.AppIcon,
             Width = 460,
-            Height = 440,
+            // 高度跟随内容：依赖表露全就长、露不全也不会被裁。
+            // 上限交给上面 ScrollViewer 的 MaxHeight 兜住，这里只留一个安全阀。
+            SizeToContent = SizeToContent.Height,
             MinWidth = 400,
             MinHeight = 360,
+            MaxHeight = 900,
             ResizeMode = ResizeMode.NoResize,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Background = bg,

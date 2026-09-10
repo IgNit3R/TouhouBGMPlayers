@@ -38,6 +38,10 @@ WORKS = [
     ("th185", "th185", "th185"),
     ("th19",  "th19",  "th19"),
     ("th20",  "th20",  "th20"),
+    # 東方紅魔郷 新典（New Classic）：Steam appid 4659620，安装目录 th06nc；
+    # 注意 th06c/th06nc 两边的 omake.txt 完全相同，并列写了 Classic 与 New Classic 两条标题，
+    # 需按安装变体选行（见下面 pick_title）。
+    ("th06nc", "th06nc", "th06nc"),
 ]
 
 # 优先挑日文版：文件名里带这些标记的说明是汉化/英文化的，跳过
@@ -90,7 +94,9 @@ def main():
             if text is None:
                 continue
             # 标题一般在前几行：取第一个看起来像标题的非空行
+            want_nc = gid.endswith("nc")      # 新典：omake 同时列 Classic/New Classic，按变体选行
             title = None
+            fallback = None
             for line in text.splitlines()[:12]:
                 s = line.strip().strip("　 ")
                 if not s or s.startswith("#"):
@@ -98,8 +104,13 @@ def main():
                 # 跳过明显的说明性文字
                 if re.match(r"^[-=─*・\s]+$", s):
                     continue
-                title = s
-                break
+                is_nc = "New Classic" in s
+                if want_nc == is_nc:
+                    title = s
+                    break
+                if fallback is None:
+                    fallback = s
+            title = title or fallback
             if title and len(title) <= 80:
                 src = f"{f.name} [{enc}]  ← {base.name}"
                 out[gid] = title

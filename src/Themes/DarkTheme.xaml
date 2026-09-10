@@ -52,6 +52,21 @@
     <SolidColorBrush x:Key="AltBgHover"    Color="#FF4A365F"/>
     <SolidColorBrush x:Key="AltBgPressed"  Color="#FF563F6E"/>
 
+    <!-- 通用「副版切换」按钮（数据驱动，见 TrackIndex.GameDef.MainLabel / AltLabel）。
+         底色取自两张 OST 封面的「紅」字（见 cover_art/记录_封面取色分析.md）：
+         新典(主版) #F6C3C8 浅玫瑰 / 原典(副版) #C2534F 砖红。
+         主版底色偏亮 → 文字用深色（VariantMainFg）；副版底色深 → 文字用浅色（AccentText）。
+         与上面灵界版那组紫色画刷各自独立，互不影响。 -->
+    <SolidColorBrush x:Key="VariantMainBg"        Color="#FFF6C3C8"/>   <!-- 主版（新典）底色 -->
+    <SolidColorBrush x:Key="VariantMainBorder"    Color="#FFE0AEB4"/>   <!-- 主版边框（略深，浅底上才看得见） -->
+    <SolidColorBrush x:Key="VariantMainBgHover"   Color="#FFEBB2B8"/>   <!-- 浅底按钮：hover 略深 -->
+    <SolidColorBrush x:Key="VariantMainBgPressed" Color="#FFDDA0A6"/>   <!-- pressed 更深 -->
+    <SolidColorBrush x:Key="VariantMainFg"        Color="#FF2A1014"/>   <!-- 主版文字（深，配浅底） -->
+    <SolidColorBrush x:Key="VariantAltBg"         Color="#FFC2534F"/>   <!-- 副版（原典）底色 -->
+    <SolidColorBrush x:Key="VariantAltBorder"     Color="#FFD4675F"/>   <!-- 副版边框（略亮） -->
+    <SolidColorBrush x:Key="VariantAltBgHover"    Color="#FFD2605A"/>
+    <SolidColorBrush x:Key="VariantAltBgPressed"  Color="#FFDE6E67"/>
+
     <!-- 说明文字里的关键词强调（文件名、数值名之类）。比正文亮、比强调色淡。 -->
     <SolidColorBrush x:Key="Emphasis"      Color="#FF9CDCFE"/>
 
@@ -546,6 +561,88 @@
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource AltBgPressed}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgPanel}"/>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Border}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextFaint}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================= 副版切换按钮（数据驱动） =================
+         播放列表行那个「新典 / 原典」按钮。两个样式共用同一份模板，只是配色不同：
+         主版绯红、副版稍暗的红。由代码按 GameDef.MainLabel/AltLabel 与 UsingAlt 选一份，
+         隐藏时 ClearValue。整份模板自带给一套悬停/按下/禁用状态（同 AltActiveButton 思路）。 -->
+    <Style x:Key="VariantMainButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource VariantMainBg}"/>
+        <Setter Property="Foreground" Value="{StaticResource VariantMainFg}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource VariantMainBorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="12,4"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="2"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"
+                                          RecognizesAccessKey="True"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource VariantMainBgHover}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource VariantMainBgPressed}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgPanel}"/>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Border}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextFaint}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="VariantAltButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource VariantAltBg}"/>
+        <Setter Property="Foreground" Value="{StaticResource AccentText}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource VariantAltBorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="12,4"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="2"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"
+                                          RecognizesAccessKey="True"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource VariantAltBgHover}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource VariantAltBgPressed}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgPanel}"/>

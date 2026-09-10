@@ -21,8 +21,8 @@
 
     <!-- 程序集/文件版本必须是纯数字；给人看的版本号走 InformationalVersion（可带字母）。
          「关于」对话框读的就是 InformationalVersion。 -->
-    <Version>1.3.0</Version>
-    <InformationalVersion>1.3k</InformationalVersion>
+    <Version>1.6.0</Version>
+    <InformationalVersion>1.6nc</InformationalVersion>
     <!-- SDK 默认会把 git 提交哈希追加到 InformationalVersion 后面（Source Revision ID，
          溯源用）。播放器版本号是给人看的，那串哈希纯属噪音，关掉。 -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
@@ -50,6 +50,9 @@
          且解码结果与 libvorbis / libsndfile 逐样本一致（已实测 100%）。
          不用 libvorbis P/Invoke 是为了保住"一个文件夹跑"的便携性（不引入原生 DLL）。 -->
     <PackageReference Include="VorbisPizza" Version="1.4.2" />
+    <!-- 新典（TH06NC）BGM 解码：纯托管 Opus 实现（BSD-3），不含 Ogg 容器解析，
+         正好匹配新典的自定义「40 字节头 + N×488 记录」容器（内为裸 Opus 包）。 -->
+    <PackageReference Include="Concentus" Version="2.2.2" />
   </ItemGroup>
 
   <ItemGroup>
@@ -76,6 +79,10 @@
     <!-- 黄昏作曲目索引。数据源：tf_prep/*_tracklist_final.csv（230 条，7 部黄昏作）
          生成：tools/csv_to_tfjson.py。缺这个资源不报错（TrackIndex 静默跳过）。 -->
     <EmbeddedResource Include="Resources\tracks.tf.json.gz" LogicalName="tracks.tf.json.gz" Condition="Exists('Resources\tracks.tf.json.gz')" />
+
+    <!-- 新典（TH06NC）曲目索引。数据源与生成脚本由另一路产出（tools/csv_to_ncjson.py）。
+         缺这个资源不报错（TrackIndex 静默跳过），故加 Exists 条件。 -->
+    <EmbeddedResource Include="Resources\tracks.nc.json.gz" LogicalName="tracks.nc.json.gz" Condition="Exists('Resources\tracks.nc.json.gz')" />
 
     <!-- TFPK v1（th145/th155）与 th175 cga 的条目真名不在容器里，需按 fileslist 哈希反查。
          内嵌社区名单（tools/135tk 同源），TfContainerSet 依次找：游戏目录 → 内嵌资源。 -->

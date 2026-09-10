@@ -50,9 +50,9 @@ public sealed class TrackDef
     /// </summary>
     [JsonIgnore] public bool IsTfOneShot => DurationSample is not null && !HasLoopSeconds;
 
-    [JsonPropertyName("alt")] public TrackDef? Alt { get; init; }    // 灵界版（目前仅 TH13 有）
+    [JsonPropertyName("alt")] public TrackDef? Alt { get; init; }    // 副版（TH13 灵界版 / 新典原编曲）
 
-    /// <summary>该音轨是否有灵界版可切换。</summary>
+    /// <summary>该音轨是否有副版可切换。</summary>
     [JsonIgnore] public bool HasAlt => Alt is not null;
 
     /// <summary>循环段长度（字节）。</summary>
@@ -106,8 +106,18 @@ public sealed class GameDef
     /// </summary>
     [JsonPropertyName("name")] public string Name { get; init; } = "";
 
-    [JsonPropertyName("source")] public string Source { get; init; } = "zwav"; // zwav | wav
+    [JsonPropertyName("source")] public string Source { get; init; } = "zwav"; // zwav | wav | tfsuica | tfogg | ncopus
     [JsonPropertyName("dir")] public string Dir { get; init; } = "";      // 常见目录名，仅作设置界面提示，不参与路径推断
+
+    // ---- 副版切换按钮文案（数据驱动）----
+    // 同一套主版/副版机制（TrackDef.Alt）在不同作品语义不同：TH13 是「霊界版」，
+    // 新典（TH06NC）是「新编曲/原编曲」。这里由索引给出按钮在两个状态下的文字，
+    // 播放器据此显隐通用切换按钮；两者都缺省（null）表示该作品不出按钮，走旧交互。
+    [JsonPropertyName("lm")] public string? MainLabel { get; init; }   // 主版状态下的按钮文字，如「新典」
+    [JsonPropertyName("la")] public string? AltLabel { get; init; }    // 副版状态下的按钮文字，如「原典」
+
+    /// <summary>该作品是否带副版切换标签（两个标签都齐才算）。</summary>
+    [JsonIgnore] public bool HasVariantLabels => MainLabel is not null && AltLabel is not null;
 
     /// <summary>
     /// tf 系（黄昏作）容器文件相对路径，按覆盖优先序排列：后面的包覆盖前面包的同名条目
@@ -119,6 +129,9 @@ public sealed class GameDef
 
     /// <summary>是否 tf 系（黄昏作）音源。</summary>
     [JsonIgnore] public bool IsTfSource => Source is "tfsuica" or "tfogg";
+
+    /// <summary>是否新典（TH06NC）Opus 音源。</summary>
+    [JsonIgnore] public bool IsNcSource => Source == "ncopus";
     [JsonPropertyName("tracks")] public List<TrackDef> Tracks { get; init; } = new();
 
     /// <summary>
@@ -167,6 +180,7 @@ public static class TrackIndex
 {
     private const string ResourceName = "tracks.json.gz";
     private const string TfResourceName = "tracks.tf.json.gz";   // 黄昏作索引；资源缺失时静默跳过
+    private const string NcResourceName = "tracks.nc.json.gz";   // 新典（TH06NC）索引；资源缺失时静默跳过
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -184,6 +198,10 @@ public static class TrackIndex
         // 时静默跳过 —— 主系列行为完全不变；索引本身有问题也不拖死主系列。
         var tfDoc = TryLoadDoc(TfResourceName);
         if (tfDoc is not null) games.AddRange(tfDoc.Games);
+
+        // 新典（TH06NC）索引同为增量资源，缺失时静默跳过。
+        var ncDoc = TryLoadDoc(NcResourceName);
+        if (ncDoc is not null) games.AddRange(ncDoc.Games);
 
         Games = games.OrderBy(GameOrder).ThenBy(g => g.Id, StringComparer.OrdinalIgnoreCase).ToList();
         ById = Games.ToDictionary(g => g.Id, StringComparer.OrdinalIgnoreCase);
@@ -208,11 +226,21 @@ public static class TrackIndex
     /// <summary>
     /// 作品排序键 = 编号值：th07 → 7，th075 → 7.5，th095 → 9.5，th128 → 12.8。
     /// 主系列与黄昏作用同一把尺子，编号序即最终列表顺序。
+    /// 编号后带字母后缀的**变体作**（如新典 th06nc）不属于编号序，统一排到列表末尾。
     /// </summary>
     private static double GameOrder(GameDef g)
     {
-        var digits = g.Id.Length > 2 && g.Id.StartsWith("th", StringComparison.OrdinalIgnoreCase)
-            ? g.Id[2..] : "";
+        if (!g.Id.StartsWith("th", StringComparison.OrdinalIgnoreCase))
+            return 999;
+
+        var rest = g.Id[2..];
+        int end = 0;
+        while (end < rest.Length && char.IsAsciiDigit(rest[end])) end++;
+        var digits = rest[..end];
+
+        // 带字母后缀 → 变体作（th06nc 新典），排末尾
+        if (end < rest.Length) return 999;
+
         return digits.Length switch
         {
             2 when double.TryParse(digits, out var a) => a,

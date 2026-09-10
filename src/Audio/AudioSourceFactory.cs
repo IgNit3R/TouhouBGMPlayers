@@ -22,6 +22,9 @@ public static class AudioSourceFactory
         if (game.IsTfSource)
             return CreateTf(game, track, dir);
 
+        if (game.IsNcSource)
+            return CreateNc(game, track, dir);
+
         string path = game.IsWavSource
             ? ResolveWavPath(game, dir, track)
             : ResolveDatPath(game, dir);
@@ -60,6 +63,24 @@ public static class AudioSourceFactory
 
         string head = Convert.ToHexString(bytes, 0, Math.Min(4, bytes.Length));
         throw new NotSupportedException($"{game.Code} 条目 {track.File} 的魔数不是 OggS/RIFF/TFWA（开头 {head}），无法播放。");
+    }
+
+    /// <summary>
+    /// 新典（TH06NC）：路径指游戏根目录，音频在 data\bgm（主版 = 新编曲）
+    /// 或 data\bgm2（Alt = 原编曲）。索引里的 File 已是相对 data\ 的子路径。
+    /// 整文件读入按自定义容器解码（Concentus），循环点是整数样本，直接透传。
+    /// </summary>
+    private static IAudioSource CreateNc(GameDef game, TrackDef track, string dir)
+    {
+        if (string.IsNullOrEmpty(track.File))
+            throw new InvalidOperationException($"{game.Code} 第 {track.No} 首在索引里没有文件名。");
+
+        string p = Path.Combine(dir, "data", track.File);
+        if (!File.Exists(p))
+            throw new FileNotFoundException($"{game.Code}：找不到 data\\{track.File}", p);
+
+        byte[] bytes = File.ReadAllBytes(p);
+        return new OpusMemorySource(bytes, track.LoopStartSample, track.LoopEndSample);
     }
 
     /// <summary>常规 20 作：路径指到 thbgm.dat 所在的目录。</summary>

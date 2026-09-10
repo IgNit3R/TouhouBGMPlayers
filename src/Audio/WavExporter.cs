@@ -26,8 +26,18 @@ public static class WavExporter
     }
 
     /// <summary>默认文件名：<c>{作品代号}_{曲号}_{曲名}.wav</c>。</summary>
-    public static string DefaultFileName(GameDef game, TrackDef track) =>
-        SafeFileName($"{game.Code}_{track.No:00}_{track.Title}") + ".wav";
+    /// <summary>
+    /// 默认文件名：<c>{作品代号}_{曲号}_{曲名}.wav</c>。
+    /// 导出**副版**时追加该作品自己的副版名（TH13 =「灵界版」、新典 =「原典」），
+    /// 否则主版与副版会写成同一个文件名互相覆盖。该曲没有副版时（如新典 #16）不加后缀。
+    /// </summary>
+    public static string DefaultFileName(GameDef game, TrackDef track, bool useAlt = false)
+    {
+        string name = $"{game.Code}_{track.No:00}_{track.Title}";
+        if (useAlt && track.Alt is not null)
+            name += "_" + (game.AltLabel ?? "灵界版");
+        return SafeFileName(name) + ".wav";
+    }
 
     /// <summary>替换掉 Windows 文件名里的非法字符。</summary>
     public static string SafeFileName(string s)
@@ -58,7 +68,7 @@ public static class WavExporter
         ct.ThrowIfCancellationRequested();
 
         var td = useAlt && track.Alt is not null ? track.Alt : track;
-        string path = outputPath ?? Path.Combine(OutputDirectory, DefaultFileName(game, track));
+        string path = outputPath ?? Path.Combine(OutputDirectory, DefaultFileName(game, track, useAlt));
 
         string? dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
