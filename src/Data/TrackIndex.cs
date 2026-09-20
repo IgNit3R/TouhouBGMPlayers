@@ -6,7 +6,7 @@ namespace ThbgmPlayer.Data;
 
 /// <summary>
 /// 一条音轨（可能是主版，或挂在某主版下的灵界版）。
-/// 字段与内嵌索引 tracks.json 的缩写键一一对应，详见 dependence/03_tools/csv_to_tracksjson.py。
+/// 字段与内嵌索引 tracks.json 的缩写键一一对应，详见 tools/csv_to_tracksjson.py。
 /// </summary>
 public sealed class TrackDef
 {

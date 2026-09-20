@@ -40,7 +40,7 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]         # tools/ 上一级即 .../bgmplayer 仓库根
-CSV = ROOT / "data" / "tracklist.csv"
+CSV = ROOT / "docs" / "tracklist.csv"
 OUT = ROOT / "src" / "Resources" / "tracks.json.gz"
 
 # 作品顺序与代号（小数作带小数点）

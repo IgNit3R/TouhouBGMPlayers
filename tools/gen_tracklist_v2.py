@@ -3,7 +3,7 @@
 生成 tsa 侧全曲目表（权威版 v2）
 
 数据源（全部来自原始文件，不依赖任何既有拆包产物）：
-  1. tsa/<dir>/thXX.dat      -> brightmoon 解出 thbgm.fmt / musiccmt.txt（落 dependence/04_source/extract/）
+  1. tsa/<dir>/thXX.dat      -> brightmoon 解出 thbgm.fmt / musiccmt.txt（落 docs/source/extract/，见下方 EXT）
   2. tsa/<dir>/thbgm.dat     -> 音频本体，仅用于校验末轨不越界
   3. tools/BGMforALL/BgmForAll.ini -> 补曲名（灵界版、玩家分数曲、早期作品）
   4. tsa/kouma/bgm/*.wav + 紅魔郷MD.DAT/*.pos -> th06 特例
@@ -12,12 +12,15 @@
 """
 import re, csv, struct, pathlib, wave, unicodedata
 
-DEP = pathlib.Path(__file__).resolve().parents[1]   # .../bgmplayer/dependence
+DEP = pathlib.Path(__file__).resolve().parents[1]   # .../bgmplayer（tools/ 的上一级）
 ROOT = DEP.parents[1]                              # .../thworks（原始数据 tsa/，红线只读）
-EXT  = DEP / "04_source" / "extract"               # thbgm.fmt / musiccmt.txt / th06
+# ⚠️ 弃用标记（2026-09-21 用户确认）：输入缓存 docs/source/（旧 dependence/04_source/）不再随仓库提供，
+#    BgmForAll.ini 是用户主动移除的 ⇒ 本脚本大概率已弃用，保留仅作记录。
+#    真要再跑：先用 brightmoon 把 thbgm.fmt / musiccmt.txt 解回 EXT，并自备 INI。
+EXT  = DEP / "docs" / "source" / "extract"         # thbgm.fmt / musiccmt.txt / th06（⚠️ 当前不存在）
 TSA  = ROOT / "tsa"
-INI  = DEP / "04_source" / "BgmForAll.ini"
-OUT  = DEP / "_gen"                                # 重生成输出，不覆盖 02_data 定稿
+INI  = DEP / "docs" / "source" / "BgmForAll.ini"   # ⚠️ 用户已移除
+OUT  = DEP / "docs" / "gen"                        # 重生成输出，不覆盖 docs/ 下的定稿
 
 # 作品代号 -> (tsa 目录, 日文标题, 西文标题, 备注)
 GAMES = [

@@ -16,9 +16,9 @@ import unicodedata
 
 import compare_tracklist as CT
 
-DEP = pathlib.Path(__file__).resolve().parents[1]   # .../bgmplayer/dependence
-OUT_MD = DEP / "_gen" / "REVIEW.md"
-OUT_CSV = DEP / "_gen" / "REVIEW_TITLES.csv"
+DEP = pathlib.Path(__file__).resolve().parents[1]   # .../bgmplayer（tools/ 的上一级）
+OUT_MD = DEP / "docs" / "gen" / "REVIEW.md"
+OUT_CSV = DEP / "docs" / "gen" / "REVIEW_TITLES.csv"
 
 # ---- 已裁定规则：命中即在备注里标注为"已裁定"，不再列为待判 ----
 # R1 末轨长度：start+total == thbgm.dat 大小（Δ=0）为准。
@@ -115,7 +115,9 @@ def load_cmt(game):
     d = CT.GAME_DIR.get(game)
     if not d:
         return {}
-    p = DEP / "04_source" / "extract" / d / "musiccmt.txt"
+    # ⚠️ 弃用标记（2026-09-21 用户确认）：musiccmt.txt 所在的输入缓存不再随仓库提供 ⇒ 本脚本大概率已弃用。
+    #    缺它时本函数静默返回 {}（备注列变空），其余部分仍能跑。
+    p = DEP / "docs" / "source" / "extract" / d / "musiccmt.txt"
     if not p.exists():
         return {}
     txt = p.read_bytes().decode("cp932", errors="replace")

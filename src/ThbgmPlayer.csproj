@@ -72,7 +72,7 @@
 
   <ItemGroup>
     <!-- 内嵌曲目索引。指定 LogicalName，代码里按 "tracks.json.gz" 取，不受目录结构影响。
-         数据源：data/tracklist.csv（346 条，含 13 首 TH13 灵界版）
+         数据源：docs/tracklist.csv（346 条，含 13 首 TH13 灵界版）
          生成：tools/csv_to_tracksjson.py -->
     <EmbeddedResource Include="Resources\tracks.json.gz" LogicalName="tracks.json.gz" />
 

@@ -15,8 +15,9 @@ import pathlib
 import struct
 import wave
 
-BGM = pathlib.Path(__file__).resolve().parents[3] / "tsa" / "kouma" / "bgm"
-POS = pathlib.Path(__file__).resolve().parents[1] / "04_source" / "extract" / "th06"
+BGM = pathlib.Path(__file__).resolve().parents[2] / "tsa" / "kouma" / "bgm"   # tools/x.py -> bgmplayer -> thworks
+# ⚠️ 弃用标记（2026-09-21 用户确认）：*.pos 所在的输入缓存不再随仓库提供 ⇒ 本脚本大概率已弃用。
+POS = pathlib.Path(__file__).resolve().parents[1] / "docs" / "source" / "extract" / "th06"
 W = 512
 
 

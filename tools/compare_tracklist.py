@@ -20,9 +20,9 @@ import pathlib
 import sys
 import unicodedata
 
-REL = pathlib.Path(__file__).resolve().parents[3] / "release" / "tsa"
-DEP = pathlib.Path(__file__).resolve().parents[1]   # .../bgmplayer/dependence
-MINE = DEP / "02_data" / "tracklist.csv"
+REL = pathlib.Path(__file__).resolve().parents[2] / "release" / "tsa"   # tools/x.py -> bgmplayer -> thworks
+DEP = pathlib.Path(__file__).resolve().parents[1]   # .../bgmplayer（tools/ 的上一级）
+MINE = DEP / "docs" / "tracklist.csv"
 
 GAME_DIR = {
     "th06": "kouma", "th07": "youmu", "th08": "eiya", "th09": "th09",

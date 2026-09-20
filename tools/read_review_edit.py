@@ -10,9 +10,9 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
-DEP = pathlib.Path(__file__).resolve().parents[1]   # .../bgmplayer/dependence
-XLSX = DEP / "02_data" / "REVIEW_TITLES.csv"
-BASE = DEP / "02_data" / "tracklist.csv"
+DEP = pathlib.Path(__file__).resolve().parents[1]   # .../bgmplayer（tools/ 的上一级）
+XLSX = DEP / "docs" / "REVIEW_TITLES.csv"
+BASE = DEP / "docs" / "tracklist.csv"
 
 
 def col_idx(ref):

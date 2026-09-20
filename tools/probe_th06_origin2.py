@@ -19,7 +19,8 @@ import sys
 
 RAW = pathlib.Path(r"E:\GitWorkspace\thworks\release\tsa\kouma\bgm\raw")
 REND = pathlib.Path(r"E:\GitWorkspace\thworks\release\tsa\kouma\bgm\rendered")
-POS = pathlib.Path(__file__).resolve().parents[1] / "04_source" / "extract" / "th06"
+# ⚠️ 弃用标记（2026-09-21 用户确认）：*.pos 所在的输入缓存不再随仓库提供 ⇒ 本脚本大概率已弃用。
+POS = pathlib.Path(__file__).resolve().parents[1] / "docs" / "source" / "extract" / "th06"
 
 N = 44100 // 2  # 比对 0.5 秒
 

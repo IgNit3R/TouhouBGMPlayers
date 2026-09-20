@@ -41,7 +41,7 @@ public sealed class ValidateResult
 /// <summary>
 /// 路径校验。只读取原始游戏文件，不做任何解包或写入。
 ///
-/// 校验依据（均已在真实数据上验证，见 dependence/03_tools 下的探测脚本）：
+/// 校验依据（均已在真实数据上验证，见 tools/ 下的探测脚本）：
 ///   1. thbgm.dat 头部 16 字节 ZWAV 头：magic="ZWAV"，version=1，
 ///      byte[9]=主版本 BCD，byte[8]=小数位 ×16（0x00/0x30/0x50/0x80 对应 .0/.3/.5/.8）。
 ///      用头里的作品号和用户填的路径比对，可抓出"把 TH13 目录指给 TH14"这类手滑。

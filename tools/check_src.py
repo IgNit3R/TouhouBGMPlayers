@@ -3,7 +3,7 @@
 C# / XAML 源码静态自检。每次改完代码、交给用户编译之前跑一遍。
 
 用法：
-    python dependence/03_tools/check_src.py
+    python tools/check_src.py
 
 为什么要这个：编译在用户那边的机器上跑，报错一来一回很慢。
 下面这些检查能提前抓住绝大多数低级错误（XML 结构坏、括号不配平、

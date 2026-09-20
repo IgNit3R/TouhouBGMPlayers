@@ -7,7 +7,9 @@ import struct, pathlib, sys
 
 ROOT = pathlib.Path(r"E:\GitWorkspace\thworks")
 TSA = ROOT / "tsa"
-EXT = pathlib.Path(__file__).resolve().parents[1] / "04_source" / "extract"
+# ⚠️ 弃用标记（2026-09-21 用户确认）：输入缓存 docs/source/（旧 dependence/04_source/）不再随仓库提供
+#    ⇒ 本脚本大概率已弃用，保留仅作记录。
+EXT = pathlib.Path(__file__).resolve().parents[1] / "docs" / "source" / "extract"
 
 # 报告 §3.2 条目数矩阵 + §3.3 zwavid
 EXPECT = {

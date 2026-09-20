@@ -6,7 +6,7 @@
 不存在社区整理常见的错字（東方妖妖夢 / 東方三月精 之类）。
 
 用法：
-    python dependence/03_tools/extract_game_names.py
+    python tools/extract_game_names.py
 """
 import pathlib
 import re

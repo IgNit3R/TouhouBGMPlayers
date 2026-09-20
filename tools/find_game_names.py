@@ -4,13 +4,13 @@
 就很可能是我们要找的名单。
 
 用法：
-    python dependence/03_tools/find_game_names.py
+    python tools/find_game_names.py
 """
 import pathlib
 
-# __file__ = thworks/bgmplayer/dependence/03_tools/find_game_names.py
-# parents: 0=03_tools 1=dependence 2=bgmplayer 3=thworks
-ROOT = pathlib.Path(__file__).resolve().parents[3]
+# __file__ = thworks/bgmplayer/tools/find_game_names.py
+# parents: 0=tools 1=bgmplayer 2=thworks
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 # 只扫这些目录，release/ 和 pushfiles/ 太大且是解包产物
 TARGETS = ["bgmplayer", "re_work", "tsa", "tools", "_scan_results", "title", "others"]

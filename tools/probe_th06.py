@@ -18,7 +18,9 @@ import subprocess
 BASE = pathlib.Path(r"E:\GitWorkspace\thworks")
 THDAT = BASE / "tools" / "thtk" / "thtk-bin-12" / "thdat.exe"
 SRC = BASE / "tsa" / "kouma" / "紅魔郷MD.DAT"
-DST_DIR = pathlib.Path(__file__).resolve().parents[1] / "04_source" / "extract" / "th06"
+# ⚠️ 弃用标记（2026-09-21 用户确认）：目标目录（旧 dependence/04_source/extract/th06）不再随仓库提供
+#    ⇒ 本脚本大概率已弃用，保留仅作记录。
+DST_DIR = pathlib.Path(__file__).resolve().parents[1] / "docs" / "source" / "extract" / "th06"
 
 
 def main():
