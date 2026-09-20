@@ -33,8 +33,20 @@
             <RowDefinition Height="Auto"/>   <!-- 当前曲目信息 -->
         </Grid.RowDefinitions>
 
+        <!--
+        M6b 内嵌列。三列：主体 ｜ 分隔条 ｜ 内嵌可视化。
+        ⚠️ 关闭可视化时第三列宽 **0**、分隔条与内嵌宿主都 Collapsed ——
+        那时整窗布局与没有这个功能时**逐像素一致**（这是刻意的：功能关掉就不该有任何痕迹）。
+        ⚠️ 主体列给 MinWidth：拖分隔条时不许把曲目表挤没。
+        -->
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="260"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition x:Name="VizColumn" Width="0"/>
+        </Grid.ColumnDefinitions>
+
         <!-- ========== 菜单栏 ========== -->
-        <Menu Grid.Row="0" Background="{StaticResource BgDeep}"
+        <Menu Grid.Row="0" Grid.ColumnSpan="3" Background="{StaticResource BgDeep}"
               Foreground="{StaticResource Text}" Padding="2">
             <MenuItem Header="设置(_S)">
                 <MenuItem Header="路径…"        Click="SettingsPaths_Click"/>
@@ -57,7 +69,7 @@
         </Menu>
 
         <!-- ========== 播放列表选择 ========== -->
-        <Border Grid.Row="1" Background="{StaticResource BgPanel}"
+        <Border Grid.Row="1" Grid.ColumnSpan="3" Background="{StaticResource BgPanel}"
                 BorderBrush="{StaticResource Border}" BorderThickness="0,1" Padding="10,7">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -188,7 +200,25 @@
         </Grid>
 
         <!-- ========== 进度条 ========== -->
-        <Border Grid.Row="3" Background="{StaticResource BgPanel}"
+        <!--
+        内嵌宿主（M6b）：主窗口最大化时，五块可视化画面搬进这一列，曲目表被挤窄。
+        ⚠️ 它与 GridHost **平级**（都在根 Grid 里）、排在它**之后** ——
+        **绝不能放进 GridHost 内部**：那是框选 / 拖拽排序的坐标系，多一个子元素就把
+        MarqueeRect / InsertLine 那套相对坐标搞乱（方案 §十 特别标了这条）。
+        -->
+        <GridSplitter x:Name="VizSplitter" Grid.Row="2" Grid.Column="1"
+                      Width="4"
+                      ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                      Background="{StaticResource Border}"
+                      DragCompleted="VizSplitter_DragCompleted"
+                      Visibility="Collapsed"/>
+
+        <ContentControl x:Name="VizHost" Grid.Row="2" Grid.Column="2"
+                        Visibility="Collapsed"
+                        ClipToBounds="True"/>
+
+        <Border Grid.Row="3" Grid.ColumnSpan="3" Background="{StaticResource BgPanel}"
                 BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="10,6">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -208,7 +238,7 @@
         </Border>
 
         <!-- ========== 播放控件 ========== -->
-        <Border Grid.Row="4" Background="{StaticResource BgPanel}"
+        <Border Grid.Row="4" Grid.ColumnSpan="3" Background="{StaticResource BgPanel}"
                 BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="10,8">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -253,7 +283,7 @@
         </Border>
 
         <!-- ========== 当前曲目信息 ========== -->
-        <Border Grid.Row="5" Background="{StaticResource BgPanel}"
+        <Border Grid.Row="5" Grid.ColumnSpan="3" Background="{StaticResource BgPanel}"
                 BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="10,8">
             <StackPanel>
                 <TextBlock x:Name="NowPlayingText" Text="未播放"

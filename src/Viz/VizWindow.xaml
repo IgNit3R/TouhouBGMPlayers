@@ -53,17 +53,6 @@
                       UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
 
-    <Window.Resources>
-        <!-- 区域外框。x:Key 显式给出，不做隐式样式。 -->
-        <Style x:Key="VizCell" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource BgPanel}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Margin" Value="2"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
-        </Style>
-    </Window.Resources>
-
     <!--
     根边框：去标题栏之后窗口自己不再画任何外框，这 1px 就是唯一的边界。
     同时承接拖动与拖放（整块内容区都能拖 —— 里面没有可点控件，不会误触）：
@@ -80,8 +69,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>    <!-- 状态条：无音频设备 / 解码失败时才显示 -->
-                <RowDefinition Height="2.3*"/>    <!-- 第一组：左 A/B ｜ 右 C+J -->
-                <RowDefinition Height="1*"/>      <!-- 第二组：D ｜ 封面 -->
+                <RowDefinition Height="*"/>       <!-- 五块区域（2.3:1 等比例挪进 VizSurfaceHost 了） -->
             </Grid.RowDefinitions>
 
             <!--
@@ -99,75 +87,12 @@
                            TextWrapping="Wrap"/>
             </Border>
 
-            <!-- ==================== 第一组 ==================== -->
-            <!-- x:Name 只为布局自检服务（要读 ColumnDefinition/RowDefinition 的实际尺寸） -->
-            <Grid x:Name="GroupFirst" Grid.Row="1">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="7*"/>   <!-- 左列：A 上 / B 下 -->
-                    <ColumnDefinition Width="3*"/>   <!-- 右列：C + J -->
-                </Grid.ColumnDefinitions>
-
-                <!-- 左列：A 上 / B 下。行定义在**这里**，不在 GroupFirst 上（那个只有列定义） -->
-                <Grid x:Name="LeftColumn" Grid.Column="0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- A 频谱条：52 根对数频柱，20Hz–20kHz，无峰值帽 -->
-                    <Border Grid.Row="0" Style="{StaticResource VizCell}">
-                        <viz:VizPanel x:Name="PanelA"/>
-                    </Border>
-
-                    <!--
-                    B 示波器：约 12ms 窗口，上下分屏 L / R。
-                    M1 起这块就是真面板：VizPanel（FrameworkElement + DrawingVisual 自绘），
-                    VizCell 那层 Border 保留 —— 它给的是外边距与描边，面板只画内容、不碰边框。
-                    -->
-                    <Border Grid.Row="1" Style="{StaticResource VizCell}">
-                        <viz:VizPanel x:Name="PanelB"/>
-                    </Border>
-                </Grid>
-
-                <!-- C 电平 + J 相位相关：同一块面板，J 横条挂在电平柱下方 -->
-                <Border Grid.Column="1" Style="{StaticResource VizCell}">
-                    <viz:VizPanel x:Name="PanelCJ"/>
-                </Border>
-            </Grid>
-
-            <!-- ==================== 第二组 ==================== -->
-            <Grid x:Name="GroupSecond" Grid.Row="2">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- D 利萨如：(L,R) 散点 + 余辉。唯一带状态的渲染器，见 LissajousRenderer 注释。 -->
-                <Border Grid.Column="0" Style="{StaticResource VizCell}">
-                    <viz:VizPanel x:Name="PanelD"/>
-                </Border>
-
-                <!--
-                封面预留：来源之后作（另一条支线），这里只是一个虚线空框 + 灰字，
-                不加载任何图片、不做占位图 —— 先把位置和观感定下来（方案 §2）。
-                x:Name 供设置里的「封面」开关切可见性（面板开关走「无渲染器 = 空白」那一条路，
-                但封面不是 VizPanel，只能切可见性）。
-                -->
-                <Grid x:Name="CoverCell" Grid.Column="1">
-                    <Rectangle Stroke="{StaticResource Border}" StrokeThickness="1"
-                               Margin="2" RadiusX="2" RadiusY="2"
-                               Fill="{StaticResource BgPanel}"/>
-                    <Rectangle Stroke="{StaticResource TextFaint}" StrokeThickness="1"
-                               StrokeDashArray="4 3" Opacity="0.55"
-                               Margin="12" RadiusX="2" RadiusY="2"/>
-                    <TextBlock Text="封面"
-                               Foreground="{StaticResource TextFaint}"
-                               FontSize="12"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               IsHitTestVisible="False"/>
-                </Grid>
-            </Grid>
+            <!--
+            五块区域。**抽成了独立控件**，因为要有两处宿主：附件窗口（贴附或自由）
+            与主窗口最大化时嵌进去的那一块（方案 §十）—— 布局只能有一份。
+            分区比例（2.3:1、7:3、第二组平分）都在 VizSurfaceHost 里面。
+            -->
+            <viz:VizSurfaceHost x:Name="Surface" Grid.Row="1"/>
         </Grid>
     </Border>
 </Window>

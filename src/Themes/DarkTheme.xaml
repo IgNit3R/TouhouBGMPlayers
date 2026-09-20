@@ -80,6 +80,21 @@
     <SolidColorBrush x:Key="VizBar"        Color="#FF2E86C4"/>
     <SolidColorBrush x:Key="VizLineL"      Color="#FF3A96DD"/>
 
+    <!--
+    可视化区域外框（五块面板各套一层）。**必须放在应用级主题里**，不能放进任何一个宿主窗口的
+    Resources —— 五块区域是 <c>VizSurfaceHost</c> 这个 UserControl，而它有两个宿主
+    （附件窗口 / 主窗口最大化时内嵌的那块）。StaticResource 在**解析期**按 XAML 文档的祖先作用域找，
+    UserControl 自己解析时够不着宿主窗口的 Resources —— 实测就是这么炸的（XamlParseException）。
+    x:Key 显式给出，不做隐式样式（窗口级/控件级隐式样式会盖掉主题，项目有前车之鉴）。
+    -->
+    <Style x:Key="VizCell" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource BgPanel}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Margin" Value="2"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+    </Style>
+
     <!-- ================= 菜单 / 右键菜单 ================= -->
     <SolidColorBrush x:Key="MenuPopupBg"     Color="#FF242427"/>
     <SolidColorBrush x:Key="MenuPopupBorder" Color="#FF43434B"/>

@@ -58,8 +58,14 @@ public partial class VizWindow : Window
     private VizAnalyzer? _analyzer;
     private VizPump? _pump;
 
-    /// <summary>四块自绘面板（封面那块不是 VizPanel，不在此列）。</summary>
-    private VizPanel[] _panels = Array.Empty<VizPanel>();
+    /// <summary>
+    /// 四块面板的渲染器实例。**本窗口与主窗口内嵌那套共用这一份** ——
+    /// 共享出去靠 <see cref="Renderers"/>，理由见 <see cref="VizRenderers"/>（D 的余辉）。
+    /// </summary>
+    private readonly VizRenderers _renderers = new();
+
+    /// <summary>渲染器实例，供内嵌宿主共用（<c>MainWindow</c> 在装配第二套区域时拿去用）。</summary>
+    public VizRenderers Renderers => _renderers;
 
     /// <summary>M3：窗口缩放钩子（贴附模式下只允许拖右边缘）。自由模式下它完全不插手。</summary>
     private VizWindowSizing? _sizing;
@@ -73,6 +79,9 @@ public partial class VizWindow : Window
     public VizWindow(string? debugSource = null, double? delayMs = null, IVizFeed? feed = null)
     {
         InitializeComponent();
+
+        // 渲染器实例交给区域用（内嵌那套会共用同一份，见 Renderers 的注释）
+        Surface.Renderers = _renderers;
 
         DebugSource = debugSource;
         _delayMs = delayMs;
@@ -111,12 +120,8 @@ public partial class VizWindow : Window
     {
         // 渲染器与面板的绑定和声源无关，放最前面：没有声源时面板也得是「已就位但没数据」，
         // 而不是「什么都不画」—— 后者会让「窗口打得开」这条底线看起来像坏了。
-        if (_panels.Length == 0)
-        {
-            _panels = new VizPanel[] { PanelA, PanelB, PanelCJ, PanelD };
-            ApplyPanelVisibility();     // 哪几块真的画，由设置里的面板开关决定
-        }
-
+        // 幂等，重复调无妨（换源会再走一遍 SetupViz）。
+        Surface.ApplyPanelVisibility();     // 哪几块真的画，由设置里的面板开关决定
         // 接入期：读侧是引擎注入的分接节点，没有「打开文件」这一步，
         // 也不该去读设置里那个调试源路径（那是隔离期的东西）。
         if (_injectedFeed is not null)
@@ -213,26 +218,44 @@ public partial class VizWindow : Window
     /// 面板各自只读自己要的那几个字段。D 的余辉靠 <see cref="VizFrame.Revision"/> 分辨
     /// 「这帧是新的吗」，与画几次无关 —— 见 <c>LissajousRenderer</c> 的说明。
     /// </summary>
+    /// <summary>收到一帧就发给五块区域。**只有正在显示的那一套该被调**（见 VizSurfaceHost.Render）。</summary>
     private void OnVizFrame()
     {
         if (_analyzer is null) return;
 
         // 播完 → **归零**（方案 §2：比暂停彻底，清干净不留淡影）。
         // 只做一次 —— 否则每帧都清一遍，画面会永远停在"空"的样子上。
-        // ⚠️ 只有调试声源会「播完」；引擎那条链的终止由播放器自己表达。
+        // ⚠️ 只有调试声源会「播完」；引擎那条链的终止由 <see cref="NotifyTerminated"/> 说。
         if (!_endedHandled && _debugFeed is not null && _debugFeed.HasEnded)
         {
             _endedHandled = true;
             _analyzer.Reset();
         }
 
-        var frame = _analyzer.Frame;
-        for (int i = 0; i < _panels.Length; i++)
-        {
-            _panels[i].Frame = frame;
-            _panels[i].Redraw();
-        }
+        // ⚠️ **不可见就别画**：主窗口最大化时画面搬进了内嵌宿主（那一套在画），
+        // 这时再给隐藏窗口里的面板录一遍绘制指令纯属白费（每帧约 50KB 的分配，实测过）。
+        if (IsVisible) Surface.Render(_analyzer.Frame);
+
+        // 不管可见与否都把帧推出去 —— 内嵌宿主靠它拿同一帧。
+        FrameReady?.Invoke(_analyzer.Frame);
     }
+
+    /// <summary>
+    /// 每渲染一帧就抛一次（**不管本窗口可见与否**）。
+    ///
+    /// 为什么要把帧推出去：分析器在这个窗口里，而另一块宿主（主窗口内嵌那套）需要**同一帧**。
+    /// 与其让两边各持一个分析器（那就是两份平滑状态、两个真相源），不如把帧推出去。
+    /// </summary>
+    public event Action<VizFrame>? FrameReady;
+
+    /// <summary>当前该由谁显示（<see cref="RefreshPlacement"/> 算出来的）。主窗口据此开关内嵌列。</summary>
+    public VizPlacementMode PlacementMode { get; private set; } = VizPlacementMode.Free;
+
+    /// <summary>放置方式变了（自由 ↔ 贴附 ↔ 内嵌）。主窗口据此开关内嵌那一列。</summary>
+    public event Action? PlacementChanged;
+
+    /// <summary>当前这一帧（还没接上读侧时为 null）。切到内嵌时会用它立刻画一帧。</summary>
+    public VizFrame? Frame => _analyzer?.Frame;
 
     private void VizWindow_Loaded(object sender, RoutedEventArgs e)
     {
@@ -321,8 +344,11 @@ public partial class VizWindow : Window
             {
                 // 解除贴附。⚠️ 别用 RestoreGeometry 之外的手段：贴附期间的几何是**宿主算出来的**，
                 // 留着它会得到一个"看起来贴过"的窗口（尺寸位置都还停在宿主旁边）。
+                // 回到自由态。主窗口那边要据此把内嵌那一列收掉 —— 所以也要通知一次。
                 AttachedMode = false;
+                PlacementMode = VizPlacementMode.Free;
                 RestoreGeometry();
+                PlacementChanged?.Invoke();
             }
             else
             {
@@ -338,20 +364,12 @@ public partial class VizWindow : Window
         AppSettings.Current.Viz.Width > 0 ? AppSettings.Current.Viz.Width : VizPlacementLogic.MinWidth;
 
     /// <summary>
-    /// 最大化时是否改为**内嵌**（画面搬进主窗口里）。
+    /// 最大化时是否改为**内嵌**（画面搬进主窗口里，曲目表被挤窄）。
     ///
-    /// ⚠️ **M6a 阶段恒为 false**：内嵌宿主（把五块搬进主窗口、曲目表被挤窄）是 **M6b** 的活，
-    /// 现在还没有那个容器。若读设置项（<c>EmbedWhenMaximized</c> 默认为 true），
-    /// 最大化就会走 <c>AttachedEmbedded</c> → 附件窗口 <c>Hide()</c>，
-    /// 而主窗口里又没有内嵌画面 —— 结果是**整块可视化凭空消失**（实测就是这个症状）。
-    ///
-    /// 传 false 则走方案 §3.6 判定表里「Maximized 且非 embed → **退化为贴右侧**」那一支：
-    /// 窗口仍在，只是贴到工作区右侧（可能压住曲目表右边缘）。
-    ///
-    /// **M6b 落地时**：把这里改回 <c>AppSettings.Current.Viz.EmbedWhenMaximized</c>
-    /// （字段早就在了），并在设置页把那个开关一并放出来。
+    /// M6a 阶段这里曾恒为 <c>false</c>（那时还没有内嵌宿主，传 true 会「隐藏了却没人接手显示」）。
+    /// **M6b 已把内嵌宿主做出来**（`VizSurfaceHost` + 主窗口的那一列），所以改回读设置项。
     /// </summary>
-    private static bool EmbedWhenMaximized => false;
+    private static bool EmbedWhenMaximized => AppSettings.Current.Viz.EmbedWhenMaximized;
 
     private void OnHostChanged() => RefreshPlacement();
 
@@ -422,34 +440,10 @@ public partial class VizWindow : Window
     /// </summary>
     public void ApplyPanelVisibility()
     {
-        if (_panels.Length == 0) return;
-
-        var viz = AppSettings.Current.Viz;
-
-        SetRenderer(PanelA, viz.ShowA, static () => new SpectrumRenderer());
-        SetRenderer(PanelB, viz.ShowB, static () => new OscilloscopeRenderer());
-        SetRenderer(PanelCJ, viz.ShowC, static () => new LevelPhaseRenderer());
-        SetRenderer(PanelD, viz.ShowD, static () => new LissajousRenderer());
-
-        CoverCell.Visibility = viz.ShowCover ? Visibility.Visible : Visibility.Collapsed;
+        Surface.ApplyPanelVisibility();
 
         // 刚打开的某一块也得立刻有内容 —— 否则要等下一次节拍起搏才看得见
         RenderOnce();
-    }
-
-    /// <summary>
-    /// 开着就确保有渲染器、关掉就置 null。
-    /// 用 <c>??=</c> 而不是每次新建：D 的余辉是**渲染器侧状态**，重建一次历史就没了。
-    /// </summary>
-    private static void SetRenderer(VizPanel panel, bool on, Func<IVizRenderer> make)
-    {
-        if (!on)
-        {
-            panel.Renderer = null;
-            return;
-        }
-
-        panel.Renderer ??= make();
     }
 
     /// <summary>
@@ -459,6 +453,7 @@ public partial class VizWindow : Window
     /// </summary>
     private void ApplyPlacement(VizWindowAction a)
     {
+        PlacementMode = a.Mode;
         AttachedMode = a.Attached;
 
         if (a.SetBounds)
@@ -477,6 +472,10 @@ public partial class VizWindow : Window
         {
             Show();
         }
+
+        // 每次落地都通知一次（订阅方幂等）。⚠️ 不只在"方式变了"时才通知 ——
+        // 宿主被摘掉再装回来、或者尺寸变了都可能需要对方重算，多通知一次不花钱。
+        PlacementChanged?.Invoke();
     }
 
     /// <summary>

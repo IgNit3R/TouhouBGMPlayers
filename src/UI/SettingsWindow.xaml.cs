@@ -443,6 +443,7 @@ public partial class SettingsWindow : Window
 
         VizEnabledCheck.IsChecked = viz.Enabled;
         VizAttachCheck.IsChecked = viz.Attached;
+        VizEmbedCheck.IsChecked = viz.EmbedWhenMaximized;
         VizLatencyBox.Text = viz.LatencyOffsetMs.ToString("0.#", CultureInfo.InvariantCulture);
 
         VizShowACheck.IsChecked = viz.ShowA;
@@ -458,6 +459,7 @@ public partial class SettingsWindow : Window
 
         viz.Enabled = VizEnabledCheck.IsChecked == true;
         viz.Attached = VizAttachCheck.IsChecked == true;
+        viz.EmbedWhenMaximized = VizEmbedCheck.IsChecked == true;
 
         // 偏移：非法输入就当没改（不把输入框里的垃圾写进配置）。
         // 上限复用命令行那一份，避免同一个数值在两个地方各写一遍后漂移。

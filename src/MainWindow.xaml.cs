@@ -1637,12 +1637,20 @@ public partial class MainWindow : Window
         var viz = new VizWindow(null, null, _engine.VizFeed);
         _vizWindow = viz;
 
+        // 内嵌那一列靠这两个信号驱动：帧推过来、放置方式变了
+        viz.FrameReady += OnVizFrameReady;
+        viz.PlacementChanged += OnVizPlacementChanged;
+
         // Owner 必须在 Show 之前设。它免费给到三件事：恒在属主之上、随属主最小化/还原、
         // **随属主关闭**（方案 R1 的根治点：因此不必去动 ShutdownMode）
         viz.Owner = this;
 
         SyncVizAttachment();       // 要不要贴附由设置决定（这里顺带建宿主）
-        viz.Show();
+
+        // ⚠️ 只在**自由模式**下自己 Show：贴附模式下 ApplyPlacement 已经按判定显示过它了；
+        // 而最大化内嵌时判定要的是「别显示」—— 若无条件 Show 再 Hide，会实打实闪一下。
+        if (viz.PlacementMode == VizPlacementMode.Free) viz.Show();
+
         viz.RenderOnce();          // ⚠️ 未播放时也得画一帧，否则面板是空白（没「帧」就什么都不画）
         viz.RefreshPlacement();    // 真正排完版再确认一次（Show 之前 ActualWidth 还没定）
     }
@@ -1682,6 +1690,10 @@ public partial class MainWindow : Window
     {
         if (_vizWindow is not null)
         {
+            // 退订两个信号，再关窗 —— 关掉之后它们还会各推一次，那时内嵌列已经该收了
+            _vizWindow.FrameReady -= OnVizFrameReady;
+            _vizWindow.PlacementChanged -= OnVizPlacementChanged;
+
             _vizWindow.Host = null;   // 先解除贴附（顺带把自由几何恢复回去）
             _vizWindow.Close();
             _vizWindow = null;
@@ -1689,6 +1701,78 @@ public partial class MainWindow : Window
 
         _vizHost?.Dispose();
         _vizHost = null;
+
+        SetEmbedded(false);           // 关掉可视化 = 内嵌那一列也要收掉
+    }
+
+    // ------------------------------------------------------------------ 内嵌（M6b）
+
+    /// <summary>内嵌列的最小宽度 —— 拖分隔条时不许把它拖没。</summary>
+    private const double EmbeddedMinWidth = 200;
+
+    private VizSurfaceHost? _embedded;
+    private bool _embeddedActive;
+
+    /// <summary>
+    /// 主窗口最大化时，画面搬进内嵌那一列（方案 §十）。**幂等**。
+    ///
+    /// 做三件事：① 按需建第二个 <see cref="VizSurfaceHost"/>（与附件窗口那套**共用渲染器与分析器**
+    /// —— 帧由 <see cref="VizWindow.FrameReady"/> 推过来，所以两边是同一份平滑状态，不会各算各的）；
+    /// ② 开/关列宽与分隔条；③ **立刻补画一帧**：暂停时节拍可能已经退订，不补就是一片空白。
+    /// </summary>
+    private void SetEmbedded(bool on)
+    {
+        if (on && _embedded is null)
+        {
+            _embedded = new VizSurfaceHost();
+
+            // ⚠️ **共用附件窗口那一份渲染器实例** —— 尤其是 D 的余辉（渲染器侧状态）：
+            // 各持一份的话，「窗口化 ↔ 最大化」每切一次团雾就从零重来。
+            _embedded.Renderers = _vizWindow!.Renderers;
+
+            _embedded.ApplyPanelVisibility();
+            VizHost.Content = _embedded;
+        }
+
+        _embeddedActive = on && _embedded is not null;
+
+        // ⚠️ 列最小宽度**只在开着时给**：关掉时列宽必须真的是 0，
+        // 否则 MinWidth 会让它留一条缝 —— 而「功能关掉时主窗口逐像素不变」是这条设计的硬要求。
+        VizColumn.MinWidth = _embeddedActive ? EmbeddedMinWidth : 0;
+        VizColumn.Width = _embeddedActive
+            ? new GridLength(Math.Max(EmbeddedMinWidth, AppSettings.Current.Viz.EmbeddedWidth))
+            : new GridLength(0);
+
+        VizSplitter.Visibility = _embeddedActive ? Visibility.Visible : Visibility.Collapsed;
+        VizHost.Visibility = _embeddedActive ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_embeddedActive && _vizWindow?.Frame is { } frame) _embedded!.Render(frame);
+    }
+
+    /// <summary>附件窗口每渲染一帧都会推过来 —— 只有内嵌正开着才需要画。</summary>
+    private void OnVizFrameReady(VizFrame frame)
+    {
+        if (!_embeddedActive || _embedded is null) return;
+        _embedded.Render(frame);
+    }
+
+    private void OnVizPlacementChanged()
+    {
+        if (_vizWindow is null) return;
+        SetEmbedded(_vizWindow.PlacementMode == VizPlacementMode.AttachedEmbedded);
+    }
+
+    /// <summary>分隔条拖完把宽度记住（方案 §8.2：GridSplitter 可拖且宽度落盘）。</summary>
+    private void VizSplitter_DragCompleted(
+        object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        if (!_embeddedActive) return;
+
+        double width = VizColumn.ActualWidth;
+        if (width < EmbeddedMinWidth) return;
+
+        AppSettings.Current.Viz.EmbeddedWidth = width;
+        AppSettings.Current.Save();
     }
 
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)

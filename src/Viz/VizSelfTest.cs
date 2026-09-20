@@ -631,9 +631,13 @@ internal static class VizSelfTest
             if (win.Content is not FrameworkElement root)
                 return new Result(Title, false, "窗口内容不是 FrameworkElement");
 
-            if (win.FindName("GroupFirst") is not Grid groupFirst ||
-                win.FindName("GroupSecond") is not Grid groupSecond ||
-                win.FindName("LeftColumn") is not Grid leftColumn)
+            // ⚠️ 五块区域现在在 **VizSurfaceHost** 里，那几个 x:Name 属于**它自己的命名域** ——
+            // 必须在它身上 FindName。在窗口上找会返回 null（Window.FindName 不穿透子命名域），
+            // 那样这条断言会以「x:Name 被改了？」的面目失败，把人往错方向带。
+            var surface = win.Surface;
+            if (surface.FindName("GroupFirst") is not Grid groupFirst ||
+                surface.FindName("GroupSecond") is not Grid groupSecond ||
+                surface.FindName("LeftColumn") is not Grid leftColumn)
                 return new Result(Title, false, "找不到 GroupFirst / GroupSecond / LeftColumn（XAML 的 x:Name 被改了？）");
 
             var names = new[] { "A", "B", "C+J", "D" };
@@ -642,7 +646,7 @@ internal static class VizSelfTest
             {
                 // 名字就是 PanelA / PanelB / PanelCJ / PanelD（C+J 那块不带加号）
                 string key = names[i] == "C+J" ? "PanelCJ" : "Panel" + names[i];
-                panels[i] = win.FindName(key) as VizPanel;
+                panels[i] = surface.FindName(key) as VizPanel;
                 if (panels[i] is null)
                     return new Result(Title, false, $"找不到 {key}");
             }
