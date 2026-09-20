@@ -272,6 +272,9 @@ public partial class VizWindow : Window
         AppSettings.Current.Viz.Width = Width;
     }
 
+    /// <summary>换封面（转发给本窗口那套区域）。<c>null</c> 退回虚线占位。</summary>
+    public void SetCover(System.Windows.Media.ImageSource? cover) => Surface.SetCover(cover);
+
     /// <summary>
     /// 每渲染一帧就抛一次（**不管本窗口可见与否**）。
     ///

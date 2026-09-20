@@ -94,6 +94,17 @@
     <Resource Include="..\assets\icon\bgmplayer.ico">
       <Link>Resources\bgmplayer.ico</Link>
     </Resource>
+
+    <!--
+    封面（M7）：每作一张，长边 512 的 JPEG，固化进程序集。
+    ⚠️ 源是 assets/cover/embed/ 下的**归一化产物**；原图（38.9MB）留在 assets/cover/ 里
+       不进这条引用 —— 编进去的只有 2.64MB。
+    用通配：以后加图 / 换图**不用改本文件**，把 512 的 jpg 丢进 embed/ 即可。
+    Link 决定包内路径 → 运行时按 pack://application:,,,/Resources/cover/<id>.jpg 读（见 VizCover）。
+    -->
+    <Resource Include="..\assets\cover\embed\*.jpg">
+      <Link>Resources\cover\%(Filename)%(Extension)</Link>
+    </Resource>
   </ItemGroup>
 
 </Project>

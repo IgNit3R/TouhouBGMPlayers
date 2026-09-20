@@ -428,6 +428,7 @@ public partial class MainWindow : Window
             {
                 NowPlayingText.Text = "未播放";
                 NowPlayingDetail.Text = "—";
+                UpdateVizCover(null);      // 什么都没在放 → 封面退回占位
             }
             AltButton.IsEnabled = false;
             UpdateFavoriteButton();
@@ -468,7 +469,35 @@ public partial class MainWindow : Window
         NowPlayingGame.Text = game.Name;   // 全名（含副标题），主标题那行已经用过 ShortName
         _nowDetail = Describe(track);
         RefreshNowPlaying();
+
+        UpdateVizCover(game.Id);           // 封面跟随**正在播放的那首曲子**
     }
+
+    /// <summary>
+    /// 刷可视化区的封面。**跟播放行为走**（用户 2026-09-21 明确：封面跟随的是曲子，不是播放列表）：
+    /// 只在真正换曲 / 切主副版时调 —— 在列表里移动光标**不动封面**。
+    ///
+    /// ⚠️ 与底部「当前曲目」那两行文字的行为**刻意不同**：那两行会跟着光标走
+    /// （用户报过的老问题：移回正在播放那行时信息回不来）。封面不跟光标，
+    /// 因为它的语义是"现在在放什么"。
+    /// </summary>
+    private void UpdateVizCover(string? gameId)
+    {
+        // 副版图**存在才用**，否则回退主版 —— th13「只有一张、不跟霊界版走」就靠这条，
+        // 不需要给任何作品写特例（见 VizCover 的注释）。
+        _currentCover = VizCover.Load(gameId, _engine?.UsingAlt == true);
+
+        _vizWindow?.SetCover(_currentCover);
+        _embedded?.SetCover(_currentCover);
+    }
+
+    /// <summary>
+    /// 当前封面。**留着它是为了"后来者补课"**：附件窗口与内嵌区域都是**按需新建**的
+    /// （开关可视化、切最大化），新造出来的那块封面块只有占位 —— 得拿这张补一次，
+    /// 否则要等下一次换曲才显示（暂停时可能永远不换）。
+    /// 同一张冻结的 <c>ImageSource</c> 可以给两处共用。
+    /// </summary>
+    private System.Windows.Media.ImageSource? _currentCover;
 
     private void TrackGrid_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
         PlaySelectedRow();
@@ -1154,6 +1183,7 @@ public partial class MainWindow : Window
         // 曲名保持主版不变（用户定：列表与面板都不跳字），只在按钮和详情前缀上体现状态
         RefreshVariantControls();
         RefreshNowPlaying();
+        UpdateVizCover(game.Id);      // 主副版切换 → 封面跟着换（th06nc 新典/原典就是这两张）
 
         // 切过去之后把「另一版本」预读上，来回 A/B 对比也是零等待
         PreloadCache.Preload(game, track, !_engine.UsingAlt);
@@ -1652,6 +1682,7 @@ public partial class MainWindow : Window
         if (viz.PlacementMode == VizPlacementMode.Free) viz.Show();
 
         viz.RenderOnce();          // ⚠️ 未播放时也得画一帧，否则面板是空白（没「帧」就什么都不画）
+        viz.SetCover(_currentCover);   // 后来者补课：新造的窗口得知道当前是哪张封面
         viz.RefreshPlacement();    // 真正排完版再确认一次（Show 之前 ActualWidth 还没定）
     }
 
@@ -1731,6 +1762,7 @@ public partial class MainWindow : Window
             _embedded.Renderers = _vizWindow!.Renderers;
 
             _embedded.ApplyPanelVisibility();
+            _embedded.SetCover(_currentCover);      // 后来者补课（见 _currentCover 的注释）
             VizHost.Content = _embedded;
         }
 

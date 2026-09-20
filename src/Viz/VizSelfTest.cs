@@ -52,6 +52,7 @@ internal static class VizSelfTest
             CheckVizFade(),
             CheckVizTap(),
             CheckVizIdlePolicy(),
+            CheckVizCover(),
             CheckVizRingWindow(),
             CheckVizCodecRoute(),
             CheckVizWindow(),
@@ -1227,6 +1228,166 @@ internal static class VizSelfTest
 
     /// <summary>是否已经归零（阈值比 <c>FadeEpsilon</c> 宽一点，容得下平滑的尾巴）。</summary>
     private static bool NearZero(float v) => MathF.Abs(v) <= 0.01f;
+
+    /// <summary>
+    /// 封面素材（M7）：**29 个作品 id 是不是都能解析出图**。
+    ///
+    /// 为什么值得单独一条：封面是**固化进程序集**的
+    /// （`assets/cover/embed/*.jpg` + csproj 的 `&lt;Resource&gt;` + `<Link>`），
+    /// 这条链上有三个会**静默失效**的地方 —— 文件没进 `embed/`、csproj 的 Link 写歪、id 拼错。
+    /// 三者都只表现为「某作没封面」：跑起来看不出是哪一个坏，也没人会逐个点 29 首去试。
+    ///
+    /// 除了「都能解析」，还反向核对**程序集里到底有哪几张**
+    /// （`Resource`-build 的项不进 `ManifestResourceNames`，得读 `.g.resources`）——
+    /// 多放一张、改错名都能当场抓出来。
+    /// </summary>
+    private static Result CheckVizCover()
+    {
+        const string Title = "封面素材（29 个作品 id 全部可解析 / ≤512 / 副版缺则回退）";
+
+        try
+        {
+            // 与数据索引一致的作品清单（官方 21 + 新典 1 + tasofro 7）
+            var ids = new[]
+            {
+                "th06", "th07", "th08", "th09", "th095", "th10", "th11", "th12", "th125", "th128",
+                "th13", "th14", "th143", "th15", "th16", "th165", "th17", "th18", "th185", "th19",
+                "th20",
+                "th06nc",
+                "th075", "th105", "th123", "th135", "th145", "th155", "th175",
+            };
+
+            var missing = new List<string>();
+            var tooBig = new List<string>();
+            var problems = new List<string>();
+            var expected = new List<string>();
+
+            int altCount = 0;
+
+            foreach (string id in ids)
+            {
+                expected.Add($"resources/cover/{id}.jpg");
+
+                var image = VizCover.Load(id, alt: false);
+
+                if (image is null)
+                {
+                    missing.Add(id);
+                    continue;
+                }
+
+                if (image.PixelWidth > VizCover.MaxEdge || image.PixelHeight > VizCover.MaxEdge)
+                    tooBig.Add($"{id}({image.PixelWidth}×{image.PixelHeight})");
+
+                // 副版：**存在才用**。给了 `_alt` 的（th06nc）该解析出**另一张**；
+                // 没给的（th13 之类）必须与主版**同一张** —— 这正是「不跟霊界版走」的实现。
+                if (VizCover.Exists(id + VizCover.AltSuffix))
+                {
+                    altCount++;
+                    expected.Add($"resources/cover/{id}{VizCover.AltSuffix}.jpg");
+
+                    var altImage = VizCover.Load(id, alt: true);
+
+                    if (altImage is null) problems.Add($"{id} 有 _alt 却解不出来");
+                    else if (ReferenceEquals(altImage, image)) problems.Add($"{id} 的 _alt 与主版同一张");
+                }
+                else if (!ReferenceEquals(VizCover.Load(id, alt: true), image))
+                {
+                    problems.Add($"{id} 无 _alt 却没回退主版");
+                }
+            }
+
+            // 反向核对：程序集里的素材集合必须与预期**一模一样**（多一张少一张都说明哪里错了）
+            var embedded = ListEmbeddedCovers();
+            expected.Sort(StringComparer.OrdinalIgnoreCase);
+
+            var extra = embedded.Except(expected, StringComparer.OrdinalIgnoreCase).ToList();
+            var lack = expected.Except(embedded, StringComparer.OrdinalIgnoreCase).ToList();
+
+            // ---- 界面层：占位与图必须**互斥** ----
+            // 上面那些只证明了"资源在"，不能证明"画面上换得动"。这里直接拿真控件驱动一遍：
+            // 有图 → 占位折叠；没图 → 占位露出来。**可离屏验，不需要 Show 窗口**。
+            var win = new VizWindow(null);
+            var surface = win.Surface;
+
+            bool uiOk;
+            string uiNote;
+
+            if (surface.FindName("CoverImage") is not System.Windows.Controls.Image coverImage ||
+                surface.FindName("CoverPlaceholder") is not UIElement placeholder)
+            {
+                uiOk = false;
+                uiNote = "找不到 CoverImage / CoverPlaceholder";
+            }
+            else
+            {
+                var sample = VizCover.Load("th06", alt: false);
+
+                surface.SetCover(sample);
+                bool withImage = coverImage.Source is not null &&
+                                 placeholder.Visibility == Visibility.Collapsed;
+
+                surface.SetCover(null);
+                bool without = coverImage.Source is null &&
+                               placeholder.Visibility == Visibility.Visible;
+
+                uiOk = withImage && without;
+                uiNote = uiOk
+                    ? "有图→占位折叠 / 没图→占位露出（都不需要 Show 窗口）"
+                    : $"✗ 占位切换不对（有图 {withImage} / 没图 {without}）";
+            }
+
+            bool ok = missing.Count == 0 && tooBig.Count == 0 && problems.Count == 0 &&
+                      extra.Count == 0 && lack.Count == 0 && uiOk;
+
+            string detail =
+                $"可解析 {ids.Length - missing.Count}/{ids.Length}" +
+                $"（缺：{(missing.Count == 0 ? "无" : string.Join("、", missing))}）；" +
+                $"超 {VizCover.MaxEdge}px：{(tooBig.Count == 0 ? "无" : string.Join("、", tooBig))}；" +
+                $"带副版 {altCount} 个（th06nc 应为 1）；" +
+                $"程序集里 {embedded.Count} 张（预期 {expected.Count}" +
+                $"{(extra.Count == 0 ? "" : "，多 " + string.Join("、", extra))}" +
+                $"{(lack.Count == 0 ? "" : "，少 " + string.Join("、", lack))}）" +
+                "；" + uiNote +
+                (problems.Count == 0 ? "" : "；⚠ " + string.Join("；", problems));
+
+            return new Result(Title, ok, detail);
+        }
+        catch (Exception ex)
+        {
+            return new Result(Title, false, ex.GetType().Name + "：" + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 列出程序集里 <c>resources/cover/</c> 下的素材名。
+    ///
+    /// ⚠️ 不能用 <c>GetManifestResourceNames()</c> —— `Resource`-build 的项**不在**那里，
+    /// 它们被打进 <c>&lt;程序集名&gt;.g.resources</c> 这一个清单资源里，得用
+    /// <see cref="System.Resources.ResourceReader"/> 读。当初以为「能解析出来就算对」，
+    /// 但那只证明**某个名字**能查到；只有枚举出来才能发现"多了一张 / 名字改错了"。
+    /// </summary>
+    private static List<string> ListEmbeddedCovers()
+    {
+        var names = new List<string>();
+
+        var asm = typeof(VizCover).Assembly;
+
+        using var stream = asm.GetManifestResourceStream(asm.GetName().Name + ".g.resources");
+        if (stream is null) return names;
+
+        using var reader = new System.Resources.ResourceReader(stream);
+
+        foreach (System.Collections.DictionaryEntry entry in reader)
+        {
+            if (entry.Key is string key &&
+                key.StartsWith("resources/cover/", StringComparison.OrdinalIgnoreCase))
+                names.Add(key);
+        }
+
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        return names;
+    }
 
     /// <summary>
     /// 节拍的退订策略（方案 §3.5 / R2「绝不让它常驻空转」）。

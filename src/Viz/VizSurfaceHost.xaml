@@ -77,24 +77,33 @@
             </Border>
 
             <!--
-            封面预留：来源之后作（另一条支线），这里只是一个虚线空框 + 灰字，
-            不加载任何图片、不做占位图 —— 先把位置和观感定下来（方案 §2）。
+            封面（M7）。**固化的素材**：每作一张，长边 512 的 JPEG，打进程序集 ——
+            见 VizCover 的注释。缺图时下面那层虚线占位露出来。
             x:Name 供设置里的「封面」开关切可见性（面板开关走「无渲染器 = 空白」那一条路，
             但封面不是 VizPanel，只能切可见性）。
             -->
             <Grid x:Name="CoverCell" Grid.Column="1">
-                <Rectangle Stroke="{StaticResource Border}" StrokeThickness="1"
-                           Margin="2" RadiusX="2" RadiusY="2"
-                           Fill="{StaticResource BgPanel}"/>
-                <Rectangle Stroke="{StaticResource TextFaint}" StrokeThickness="1"
-                           StrokeDashArray="4 3" Opacity="0.55"
-                           Margin="12" RadiusX="2" RadiusY="2"/>
-                <TextBlock Text="封面"
-                           Foreground="{StaticResource TextFaint}"
-                           FontSize="12"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           IsHitTestVisible="False"/>
+                <!-- 占位层：有图时整层折叠，没图时就是原来那副样子 -->
+                <Grid x:Name="CoverPlaceholder">
+                    <Rectangle Stroke="{StaticResource Border}" StrokeThickness="1"
+                               Margin="2" RadiusX="2" RadiusY="2"
+                               Fill="{StaticResource BgPanel}"/>
+                    <Rectangle Stroke="{StaticResource TextFaint}" StrokeThickness="1"
+                               StrokeDashArray="4 3" Opacity="0.55"
+                               Margin="12" RadiusX="2" RadiusY="2"/>
+                    <TextBlock Text="封面"
+                               Foreground="{StaticResource TextFaint}"
+                               FontSize="12"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               IsHitTestVisible="False"/>
+                </Grid>
+
+                <!--
+                画面本身。Stretch=Uniform：**不裁切**（碟边不该被切掉），
+                长宽比与面板不同时留边 —— 素材都是近正方，实际几乎无留边。
+                -->
+                <Image x:Name="CoverImage" Stretch="Uniform" Margin="2"/>
             </Grid>
         </Grid>
     </Grid>

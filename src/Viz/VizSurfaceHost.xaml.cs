@@ -60,6 +60,18 @@ public partial class VizSurfaceHost : UserControl
     }
 
     /// <summary>
+    /// 换封面（<c>null</c> = 没有图，露出虚线占位）。
+    ///
+    /// 由主窗口在**真正换曲 / 切主副版**时调一次 —— 封面是慢变量，不走每帧那条路。
+    /// ⚠️ 两处宿主都要调（附件窗口 + 内嵌）；传进来的是同一张**冻结**的图，可以共用。
+    /// </summary>
+    public void SetCover(System.Windows.Media.ImageSource? cover)
+    {
+        CoverImage.Source = cover;
+        CoverPlaceholder.Visibility = cover is null ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
     /// 把一帧发给四块面板并重画。
     ///
     /// ⚠️ **只有正在显示的那一套该被调**（另一套看不见，重画纯属白费）——
