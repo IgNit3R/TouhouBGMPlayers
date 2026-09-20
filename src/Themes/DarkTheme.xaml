@@ -73,6 +73,13 @@
     <!-- 正在播放的那一行。比选中色淡得多，不能和选中态抢，但要能从底色和斑马纹里看出来 -->
     <SolidColorBrush x:Key="RowPlaying"    Color="#FF233A4D"/>
 
+    <!-- ================= 可视化（只加这 2 个，其余全复用上面的） =================
+         定稿参数见 docs/2026-09-19-research-visualization.md §7。
+         VizBar  ：频谱柱、电平柱体（示波器右声道与相位指针复用 Emphasis #9CDCFE，
+                   示波器左声道与利萨如、相位指针复用 VizLineL —— 同族双蓝，不引入新色相）。 -->
+    <SolidColorBrush x:Key="VizBar"        Color="#FF2E86C4"/>
+    <SolidColorBrush x:Key="VizLineL"      Color="#FF3A96DD"/>
+
     <!-- ================= 菜单 / 右键菜单 ================= -->
     <SolidColorBrush x:Key="MenuPopupBg"     Color="#FF242427"/>
     <SolidColorBrush x:Key="MenuPopupBorder" Color="#FF43434B"/>

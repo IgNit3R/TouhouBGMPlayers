@@ -1,0 +1,169 @@
+<Window x:Class="ThbgmPlayer.Viz.VizWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="可视化"
+        Icon="/ThbgmPlayer;component/Resources/bgmplayer.ico"
+        Width="560" Height="480"
+        MinWidth="360" MinHeight="300"
+        Background="{StaticResource BgDeep}"
+        Foreground="{StaticResource Text}"
+        FontFamily="Yu Gothic UI, Meiryo UI, Microsoft YaHei UI"
+        FontSize="13"
+        WindowStartupLocation="Manual"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        WindowStyle="None"
+        ResizeMode="CanResize">
+
+    <!--
+    ============================================================
+     可视化附件窗口
+    ============================================================
+    M0 只搭「窗口 + 五块区域的空壳」；取数与渲染从 M1 起逐个填。
+    比例照方案 §6：第一组 : 第二组 = 2.3 : 1；左列 : 右列 = 7 : 3。
+
+    【无标题栏】（用户 2026-09-20 定）
+    附件窗口是主窗口的附属物，位置与尺寸都由宿主算出来，标题栏纯属多余 ——
+    而且它要白吃掉约 30px 的「等高」预算（贴附时要求与宿主等高，多一条标题栏
+    就等于少 30px 画面）。所以 WindowStyle=None + WindowChrome：
+      · CaptionHeight=0        → 没有可拖拽的标题区
+      · ResizeBorderThickness  → 边缘仍可缩放（M3 会把「只拖右边缘有效」+ 高度锁定做上去）
+      · UseAeroCaptionButtons=False → 不要系统那三个按钮
+    不用 AllowsTransparency（它会让窗口失去任务栏项与 Alt+Tab，且 airspace 问题一堆）。
+    拖动改由内容区自己接管：见根 Border 的 MouseLeftButtonDown → Root_MouseLeftButtonDown。
+    关窗口靠 Alt+F4 / 任务栏；接入期由宿主管生命周期，不需要窗口内的关闭按钮。
+    任务栏项暂留（ShowInTaskbar 默认 True）—— 隔离期要靠它找到这个窗口，接入期再关。
+
+    注意：这里**不得**写 Button / ComboBox 之类的隐式样式（TargetType 无 x:Key）——
+    窗口级隐式样式会盖掉应用级主题，项目已有前车之鉴（见 MainWindow.xaml:19-21）。
+    本文件只用一个显式 key 的 Style，没有隐式样式。
+
+    M1/M2 落地方式：把每个 Border 里的占位 TextBlock 换成 VizPanel，
+    Border 保留（它给的是分隔与底色），不改这个文件的骨架结构。
+    -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                      ResizeBorderThickness="6"
+                      GlassFrameThickness="0"
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <!-- 区域外框。x:Key 显式给出，不做隐式样式。 -->
+        <Style x:Key="VizCell" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource BgPanel}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+        </Style>
+        <!-- 区域名占位文字（M2 起逐个撤掉） -->
+        <Style x:Key="VizCellLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextFaint}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="6,4,6,4"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+            <Setter Property="IsHitTestVisible" Value="False"/>
+        </Style>
+    </Window.Resources>
+
+    <!--
+    根边框：去标题栏之后窗口自己不再画任何外框，这 1px 就是唯一的边界。
+    同时承接拖动（整块内容区都能拖 —— 里面没有可点控件，不会误触）。
+    -->
+    <Border BorderBrush="{StaticResource Border}"
+            BorderThickness="1"
+            Background="{StaticResource BgDeep}"
+            MouseLeftButtonDown="Root_MouseLeftButtonDown">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>    <!-- 状态条：无音频设备 / 解码失败时才显示 -->
+                <RowDefinition Height="2.3*"/>    <!-- 第一组：左 A/B ｜ 右 C+J -->
+                <RowDefinition Height="1*"/>      <!-- 第二组：D ｜ 封面 -->
+            </Grid.RowDefinitions>
+
+            <!--
+            状态条。方案 §7-R7：设备缺失或解码失败时窗口**仍要能打开**并在顶部报错，
+            渲染器保持静止态，绝不崩。M0 先把这个位置留出来（默认折叠）。
+            -->
+            <Border x:Name="StatusBar" Grid.Row="0"
+                    Visibility="Collapsed"
+                    Background="{StaticResource BgElevated}"
+                    BorderBrush="{StaticResource Border}"
+                    BorderThickness="0,0,0,1"
+                    Padding="8,4">
+                <TextBlock x:Name="StatusText"
+                           Foreground="{StaticResource Warn}"
+                           TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- ==================== 第一组 ==================== -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="7*"/>   <!-- 左列：A 上 / B 下 -->
+                    <ColumnDefinition Width="3*"/>   <!-- 右列：C + J -->
+                </Grid.ColumnDefinitions>
+
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- A 频谱条：52 根对数频柱，20Hz–20kHz，无峰值帽 -->
+                    <Border Grid.Row="0" Style="{StaticResource VizCell}">
+                        <TextBlock Style="{StaticResource VizCellLabel}"
+                                   Text="A 频谱条（对数 20Hz–20kHz · 52 柱）"/>
+                    </Border>
+
+                    <!-- B 示波器：约 12ms 窗口，上下分屏 L / R -->
+                    <Border Grid.Row="1" Style="{StaticResource VizCell}">
+                        <TextBlock Style="{StaticResource VizCellLabel}"
+                                   Text="B 示波器（12ms · 上下分屏 L/R）"/>
+                    </Border>
+                </Grid>
+
+                <!-- C 电平 + J 相位相关：同一块面板，J 横条挂在电平柱下方 -->
+                <Border Grid.Column="1" Style="{StaticResource VizCell}">
+                    <TextBlock Style="{StaticResource VizCellLabel}"
+                               Text="C 电平（-36…0 dB）＋ J 相位相关"/>
+                </Border>
+            </Grid>
+
+            <!-- ==================== 第二组 ==================== -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- D 利萨如：(L,R) 散点 + 余辉 -->
+                <Border Grid.Column="0" Style="{StaticResource VizCell}">
+                    <TextBlock Style="{StaticResource VizCellLabel}"
+                               Text="D 利萨如"/>
+                </Border>
+
+                <!--
+                封面预留：来源之后作（另一条支线），这里只是一个虚线空框 + 灰字，
+                不加载任何图片、不做占位图 —— 先把位置和观感定下来（方案 §2）。
+                -->
+                <Grid Grid.Column="1">
+                    <Rectangle Stroke="{StaticResource Border}" StrokeThickness="1"
+                               Margin="2" RadiusX="2" RadiusY="2"
+                               Fill="{StaticResource BgPanel}"/>
+                    <Rectangle Stroke="{StaticResource TextFaint}" StrokeThickness="1"
+                               StrokeDashArray="4 3" Opacity="0.55"
+                               Margin="12" RadiusX="2" RadiusY="2"/>
+                    <TextBlock Text="封面"
+                               Foreground="{StaticResource TextFaint}"
+                               FontSize="12"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               IsHitTestVisible="False"/>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

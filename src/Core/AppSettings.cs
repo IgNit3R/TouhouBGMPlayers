@@ -99,6 +99,47 @@ public sealed class LastPlayed
 }
 
 /// <summary>
+/// 可视化附件窗口。隔离期（--viz）与接入期共用同一份设置 —— 换了宿主不该换配置。
+/// 面板开关只落盘、暂不做 UI（方案 §5）。
+/// </summary>
+public sealed class VizSettings
+{
+    /// <summary>附件窗口宽度。自由模式可拖；贴附模式下由宿主几何算出，这个值只作「期望宽度」。</summary>
+    [JsonPropertyName("width")] public double Width { get; set; } = 560;
+
+    /// <summary>附件窗口高度。自由模式用；接入期恒等于宿主高度，不再回写。</summary>
+    [JsonPropertyName("height")] public double Height { get; set; } = 480;
+
+    [JsonPropertyName("left")] public double? Left { get; set; }
+    [JsonPropertyName("top")] public double? Top { get; set; }
+
+    /// <summary>是否贴附主窗口（接入期生效；隔离期没有主体，恒按自由窗口处理）。</summary>
+    [JsonPropertyName("attached")] public bool Attached { get; set; }
+
+    /// <summary>主窗口最大化时内嵌进主窗口右侧；关掉则退化为贴右侧（预留开关，方案 §3.6）。</summary>
+    [JsonPropertyName("embedWhenMaximized")] public bool EmbedWhenMaximized { get; set; } = true;
+
+    /// <summary>内嵌宽度（接入期由 GridSplitter 拖动写回）。</summary>
+    [JsonPropertyName("embeddedWidth")] public double EmbeddedWidth { get; set; } = 420;
+
+    /// <summary>
+    /// 听觉延迟对齐偏移（毫秒）。读「约这么久之前」的样本，让画面和耳朵对齐 ——
+    /// WASAPI 共享模式的输出缓冲本身就是这么大，不补偿的话画面会早于声音。
+    /// </summary>
+    [JsonPropertyName("latencyOffsetMs")] public double LatencyOffsetMs { get; set; } = 100;
+
+    /// <summary>最近一次 --viz 带的音频路径（不带参数启动时接着听，调试期便利）。</summary>
+    [JsonPropertyName("debugSource")] public string DebugSource { get; set; } = "";
+
+    // ---- 面板开关：本次不做设置 UI，先在配置里留位（方案 §5） ----
+    [JsonPropertyName("showA")] public bool ShowA { get; set; } = true;
+    [JsonPropertyName("showB")] public bool ShowB { get; set; } = true;
+    [JsonPropertyName("showC")] public bool ShowC { get; set; } = true;
+    [JsonPropertyName("showD")] public bool ShowD { get; set; } = true;
+    [JsonPropertyName("showCover")] public bool ShowCover { get; set; } = true;
+}
+
+/// <summary>
 /// 全部设置。只存在程序目录下的 settings.json —— 不写 AppData（DESIGN_v3.md §2）。
 /// </summary>
 public sealed class AppSettings
@@ -112,6 +153,7 @@ public sealed class AppSettings
     [JsonPropertyName("export")] public ExportSettings Export { get; set; } = new();
     [JsonPropertyName("ui")] public UiSettings Ui { get; set; } = new();
     [JsonPropertyName("lastPlayed")] public LastPlayed LastPlayed { get; set; } = new();
+    [JsonPropertyName("viz")] public VizSettings Viz { get; set; } = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
