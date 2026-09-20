@@ -42,6 +42,7 @@
                 <MenuItem Header="导出…"        Click="SettingsExport_Click"/>
                 <Separator/>
                 <MenuItem Header="外观…"        Click="SettingsUi_Click"/>
+                <MenuItem Header="可视化…"      Click="SettingsViz_Click"/>
             </MenuItem>
             <MenuItem Header="播放列表(_L)">
                 <MenuItem Header="新建列表…"                    Click="PlaylistNew_Click"/>
@@ -74,6 +75,20 @@
                 <Button Grid.Column="2" x:Name="VariantButton" Visibility="Collapsed"
                         Click="Variant_Click" MinWidth="64" Height="26" Margin="8,0,0,0"
                         ToolTip="在新编曲与原编曲之间切换"/>
+                <!--
+                可视化的快速开关（M6 接入）。位置由用户 2026-09-20 定：**「曲目数量」的左边**。
+                ⚠️ 塞进 col 3 这个弹性列并右对齐，是为了**不新增列** ——
+                这一行是既有布局（7 万文件的仓库里回归代价最高的就是动它），
+                新增列要顺移后面所有 Grid.Column，而右对齐在观感上等价。
+                与设置页的「总开关」是**同一个值**（AppSettings.Viz.Enabled）。
+                -->
+                <ToggleButton Grid.Column="3" x:Name="VizQuickToggle"
+                              Style="{StaticResource ToggleSwitch}"
+                              Content="可视化"
+                              HorizontalAlignment="Right" VerticalAlignment="Center"
+                              Margin="0,0,12,0"
+                              ToolTip="打开 / 关闭可视化（与设置里的总开关是同一个值）"
+                              Checked="VizQuickToggle_Changed" Unchecked="VizQuickToggle_Changed"/>
                 <TextBlock Grid.Column="4" x:Name="PlaylistSummary"
                            VerticalAlignment="Center" Foreground="{StaticResource TextDim}"/>
             </Grid>

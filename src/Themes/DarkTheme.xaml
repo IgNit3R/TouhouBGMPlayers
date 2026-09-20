@@ -454,6 +454,60 @@
          和 ComboBox 同一个坑：默认样式的 Foreground 取自系统 ControlText（黑色），
          样式 Setter 优先级高于从窗口继承的前景色，所以深色主题下文字是黑的。
          勾选框 / 圆点本身也顺手重写，不然系统浅色边框在深色底上很跳。 -->
+    <!--
+    开关按钮：外观与 Button 同源，只多一个「选中」态 —— 勾选时拿主题的 Accent 填底，读作「开着」。
+    主窗口那个「可视化」快速开关用它。
+
+    ⚠️ **必须带 x:Key，不能做成隐式样式**：隐式 ToggleButton 样式会把 Padding / Background
+    这些 setter 也套到 **ComboBox 模板内部**那个 ToggleButton 上（它只显式覆盖了 Template，
+    没覆盖 Padding）—— 那会把全app 每个下拉框的箭头按钮撑成 12,4 的内边距。
+    -->
+    <Style x:Key="ToggleSwitch" TargetType="ToggleButton">
+        <Setter Property="Background" Value="{StaticResource BgElevated}"/>
+        <Setter Property="Foreground" Value="{StaticResource Text}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="12,4"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="2"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"
+                                          RecognizesAccessKey="True"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgHover}"/>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BorderHover}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgPressed}"/>
+                        </Trigger>
+                        <!-- 选中态必须排在 hover/pressed **之后**：同时命中时后面的赢 -->
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource Accent}"/>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                            <Setter Property="Foreground" Value="{StaticResource AccentText}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgPanel}"/>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Border}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextFaint}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{StaticResource Text}"/>
         <Setter Property="SnapsToDevicePixels" Value="True"/>

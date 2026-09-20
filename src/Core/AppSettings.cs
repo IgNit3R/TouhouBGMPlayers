@@ -104,6 +104,16 @@ public sealed class LastPlayed
 /// </summary>
 public sealed class VizSettings
 {
+    /// <summary>
+    /// **总开关**：是否启用可视化（M6 接入）。
+    ///
+    /// 两处入口**共用这一个值**：设置页的「可视化」标签页与主窗口的快速开关都读写它 ——
+    /// 所以设置窗口关闭时主窗口要重读一次，否则两处的勾会各说各话。
+    ///
+    /// 默认 false：新功能默认关着，用户主动打开才出现。
+    /// </summary>
+    [JsonPropertyName("enabled")] public bool Enabled { get; set; }
+
     /// <summary>附件窗口宽度。自由模式可拖；贴附模式下由宿主几何算出，这个值只作「期望宽度」。</summary>
     [JsonPropertyName("width")] public double Width { get; set; } = 560;
 
@@ -113,8 +123,14 @@ public sealed class VizSettings
     [JsonPropertyName("left")] public double? Left { get; set; }
     [JsonPropertyName("top")] public double? Top { get; set; }
 
-    /// <summary>是否贴附主窗口（接入期生效；隔离期没有主体，恒按自由窗口处理）。</summary>
-    [JsonPropertyName("attached")] public bool Attached { get; set; }
+    /// <summary>
+    /// 是否贴附主窗口。**默认 true** —— 方案的窗口形态本来就是「贴主窗口右侧、顶对齐、等高」，
+    /// 自由窗口是退路而不是默认。
+    ///
+    /// ⚠️ 接入前它默认 false：那时没有主体（隔离期），贴附无从谈起。
+    /// 隔离期/`--viz` 路径下即使这个值是 true，也只是不起作用（没有宿主就没有放置可言）。
+    /// </summary>
+    [JsonPropertyName("attached")] public bool Attached { get; set; } = true;
 
     /// <summary>主窗口最大化时内嵌进主窗口右侧；关掉则退化为贴右侧（预留开关，方案 §3.6）。</summary>
     [JsonPropertyName("embedWhenMaximized")] public bool EmbedWhenMaximized { get; set; } = true;

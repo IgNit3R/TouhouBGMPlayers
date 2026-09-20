@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -5,6 +6,7 @@ using System.Windows.Media;
 using ThbgmPlayer.Audio;
 using ThbgmPlayer.Core;
 using ThbgmPlayer.Data;
+using ThbgmPlayer.Viz;
 
 // 同上：别名兜底，避免与 System.Drawing 的 Brush / Color 撞名（CS0104）。
 using Brush = System.Windows.Media.Brush;
@@ -121,6 +123,7 @@ public partial class SettingsWindow : Window
         LoadPlayback();
         LoadExport();
         LoadUi();
+        LoadViz();
 
         // 初始标签页要等控件树建好再切，构造期间切会被后续初始化覆盖
         Loaded += (_, _) =>
@@ -416,14 +419,59 @@ public partial class SettingsWindow : Window
     /// （切输出设备、重挂热键、时间线重算等）**立即**应用，而不是等关窗。</summary>
     public event Action? Applied;
 
-    /// <summary>四个标签页共用底部按钮，一次性全部应用并保存。</summary>
+    /// <summary>各标签页共用底部按钮，一次性全部应用并保存。</summary>
     private void ApplyAll()
     {
         ApplyPaths();
         ApplyPlayback();
         ApplyExport();
+        ApplyViz();
         AppSettings.Current.Save();
         Applied?.Invoke();
+    }
+
+    // ------------------------------------------------------------------ 可视化
+
+    /// <summary>
+    /// 可视化页（M6 接入）。设置项与 <c>AppSettings.Viz</c> 一一对应，
+    /// 其中**总开关 <c>Enabled</c> 与主窗口的快速开关是同一个值** ——
+    /// 所以这里改完，主窗口那边的勾会在 <c>Applied</c> 回调里跟着刷新。
+    /// </summary>
+    private void LoadViz()
+    {
+        var viz = AppSettings.Current.Viz;
+
+        VizEnabledCheck.IsChecked = viz.Enabled;
+        VizAttachCheck.IsChecked = viz.Attached;
+        VizLatencyBox.Text = viz.LatencyOffsetMs.ToString("0.#", CultureInfo.InvariantCulture);
+
+        VizShowACheck.IsChecked = viz.ShowA;
+        VizShowBCheck.IsChecked = viz.ShowB;
+        VizShowCCheck.IsChecked = viz.ShowC;
+        VizShowDCheck.IsChecked = viz.ShowD;
+        VizShowCoverCheck.IsChecked = viz.ShowCover;
+    }
+
+    private void ApplyViz()
+    {
+        var viz = AppSettings.Current.Viz;
+
+        viz.Enabled = VizEnabledCheck.IsChecked == true;
+        viz.Attached = VizAttachCheck.IsChecked == true;
+
+        // 偏移：非法输入就当没改（不把输入框里的垃圾写进配置）。
+        // 上限复用命令行那一份，避免同一个数值在两个地方各写一遍后漂移。
+        if (double.TryParse(VizLatencyBox.Text, NumberStyles.Float,
+                            CultureInfo.InvariantCulture, out double ms) && ms >= 0)
+        {
+            viz.LatencyOffsetMs = ms > VizCommandLine.MaxDelayMs ? VizCommandLine.MaxDelayMs : ms;
+        }
+
+        viz.ShowA = VizShowACheck.IsChecked == true;
+        viz.ShowB = VizShowBCheck.IsChecked == true;
+        viz.ShowC = VizShowCCheck.IsChecked == true;
+        viz.ShowD = VizShowDCheck.IsChecked == true;
+        viz.ShowCover = VizShowCoverCheck.IsChecked == true;
     }
 
     /// <summary>校验全部路径、写回设置并保存。只有点「应用 / 确定」才会走到这里。</summary>

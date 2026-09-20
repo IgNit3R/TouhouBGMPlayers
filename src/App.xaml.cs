@@ -39,7 +39,7 @@ public partial class App : Application
 
         if (launch.Mode == VizLaunchMode.Viz)
         {
-            var viz = new VizWindow(launch.AudioPath);
+            var viz = new VizWindow(launch.AudioPath, launch.DelayMs);
             MainWindow = viz;
             viz.Show();
             return;

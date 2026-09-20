@@ -3,6 +3,7 @@ using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using ThbgmPlayer.Core;
 using ThbgmPlayer.Data;
+using ThbgmPlayer.Viz;
 
 namespace ThbgmPlayer.Audio;
 
@@ -40,11 +41,21 @@ public sealed class PlayerEngine : IDisposable
     private float _volumeLevel = 1f;
     private System.Threading.Timer? _fadeTimer;
 
+    /// <summary>
+    /// 可视化分接节点（方案 §3.2）。**长期持有**，插在音量之后、16bit 转换之前 ——
+    /// 「取样点在音量后」是已拍板的：所见即所听，音量拉到 0 画面跟着归零。
+    ///
+    /// ⚠️ 它**不随输出设备重建**：切设备时 <see cref="BuildOutput"/> 会重建 WasapiPlayer，
+    /// 但分接节点必须留着，否则环里攒的数据与可视化的订阅方会一起断掉。
+    /// </summary>
+    private readonly VizTap _vizTap;
+
     public PlayerEngine()
     {
         var fmt = WaveFormat.CreateIeeeFloatWaveFormat(OutputRate, OutputChannels);
         _mixer = new CrossfadeMixer(fmt);
         _volume = new VolumeSampleProvider(_mixer);
+        _vizTap = new VizTap(_volume, AppSettings.Current.Viz.LatencyOffsetMs);
 
         try
         {
@@ -57,6 +68,15 @@ public sealed class PlayerEngine : IDisposable
             _out = null;
         }
     }
+
+    /// <summary>
+    /// 可视化读侧（只读）。窗口只依赖 <see cref="IVizFeed"/>，不认引擎 ——
+    /// 这也是隔离期能用 <c>VizDebugFeed</c> 顶替它的原因。
+    /// </summary>
+    public IVizFeed VizFeed => _vizTap;
+
+    /// <summary>设置里改了「与听觉对齐」的偏移就调一下（幂等，立即生效）。</summary>
+    public void SetVizLatency(double ms) => _vizTap.SetLatencyOffset(ms);
 
     /// <summary>
     /// 按当前设置建输出。指定了设备且找得到就绑上去；否则用系统默认 + 自动流路由
@@ -83,7 +103,10 @@ public sealed class PlayerEngine : IDisposable
         // 吞成了 InitError —— 系统默认这条路径的播放从引入 routing 起就是坏的。
         // 这里 ctor 必须是同步的，GetAwaiter().GetResult() 等这一次性的初始化即可。
         var player = builder.BuildAsync().GetAwaiter().GetResult();
-        player.Init(new SampleToWaveProvider16(_volume));
+
+        // 分接节点插在**音量之后、16bit 转换之前**（方案 §10 的 1 行改动）：
+        // 于是可视化看到的是「用户实际听到的」那一份电平。
+        player.Init(new SampleToWaveProvider16(_vizTap));
 
         // 指定设备找不到时已经悄悄退回系统默认，把设置也掰回来，免得界面显示和实际不符
         _currentDeviceId = device is not null ? deviceId : null;
@@ -361,5 +384,6 @@ public sealed class PlayerEngine : IDisposable
         HardStop();
         Reap(TimeSpan.Zero);
         try { _out?.Dispose(); } catch { /* 忽略 */ }
+        _vizTap.Dispose();   // 释放后 IsPlaying 恒 false，可视化那边自然走归零
     }
 }

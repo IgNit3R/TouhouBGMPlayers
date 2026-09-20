@@ -5,6 +5,7 @@ using ThbgmPlayer.Audio;
 using ThbgmPlayer.Core;
 using ThbgmPlayer.Data;
 using ThbgmPlayer.UI;
+using ThbgmPlayer.Viz;
 
 namespace ThbgmPlayer;
 
@@ -157,6 +158,12 @@ public partial class MainWindow : Window
         RefreshVariantControls();
         UpdateFavoriteButton();
         UpdatePlaylistMenus();
+
+        // 可视化总开关：先把勾选框同步成设置里的值（**只同步、不开窗口**），
+        // 真正打开窗口放到 Loaded —— 构造期主窗口自己还没排完版，
+        // 那时去算「贴右侧、等高」拿到的是没意义的几何。
+        SyncVizToggle();
+        Loaded += (_, _) => ApplyVizEnabled();
 
         // 到此设置才真正应用到界面上，此后控件变化才算用户操作
         _ready = true;
@@ -497,6 +504,11 @@ public partial class MainWindow : Window
         // 同一首曲子重入时（切循环模式走的就是这条路）保留灵界版状态，换曲则回到主版
         bool keepAlt = _engine.UsingAlt && _engine.Current is TrackRef prev && prev == r;
 
+        // 换曲 = 终止语义 → 可视化归零（方案 §2）。放在最前面：
+        // 后面无论走哪条分支（含失败路径）都算是"上一首结束了"。
+        // 同一首重入（切循环模式）也走这里 —— 画面清一次再重新开始，观感上比留着上一轮的余辉正确。
+        _vizWindow?.NotifyTerminated();
+
         try
         {
             _engine.Play(game, track, keepAlt);
@@ -608,6 +620,11 @@ public partial class MainWindow : Window
     {
         if (_engine is null) return;
 
+        // 可视化：引擎**没有播放状态事件**，所以借这个既有的 100ms tick 把节拍起起来
+        // （停搏归 VizPump 自己：淡影收敛或 1.5s 上限后自退订）。
+        // 放在「未播放就 return」之前 —— 它只在播时动作，但这样读起来才是「状态同步」。
+        _vizWindow?.RefreshFeedState();
+
         if (!_engine.IsPlaying)
         {
             UpdatePlayButton();
@@ -623,6 +640,7 @@ public partial class MainWindow : Window
                 ? RandomRef()
                 : NextRef();
             if (next is not null) PlayTrack(next.Value);
+            else _vizWindow?.NotifyTerminated();   // 后面没有曲子了 = 真播完 → 归零
         }
     }
 
@@ -1351,8 +1369,9 @@ public partial class MainWindow : Window
     private void SettingsPlayback_Click(object sender, RoutedEventArgs e) => OpenSettings(1);
     private void SettingsExport_Click(object sender, RoutedEventArgs e) => OpenSettings(2);
     private void SettingsUi_Click(object sender, RoutedEventArgs e) => OpenSettings(3);
+    private void SettingsViz_Click(object sender, RoutedEventArgs e) => OpenSettings(4);
 
-    /// <summary>打开设置窗口并定位到指定标签页：0 路径 / 1 播放参数 / 2 导出 / 3 外观。</summary>
+    /// <summary>打开设置窗口并定位到指定标签页：0 路径 / 1 播放参数 / 2 导出 / 3 外观 / 4 可视化。</summary>
     private void OpenSettings(int tab)
     {
         var dlg = new SettingsWindow { Owner = this, InitialTab = tab };
@@ -1376,6 +1395,12 @@ public partial class MainWindow : Window
         UpdateStatus();
         UpdateTransportEnabled();
         ApplyGlobalMediaKeys();   // 全局多媒体键的开关可能改了，重挂一次（幂等）
+
+        // 可视化：总开关可能在设置页里改了（与快速开关同一个值）、面板开关与延迟偏移也可能改了。
+        // 全部幂等，所以点「应用」和关窗后各跑一次都没关系。
+        ApplyVizEnabled();
+        _vizWindow?.ApplyPanelVisibility();
+        _engine?.SetVizLatency(AppSettings.Current.Viz.LatencyOffsetMs);
 
         if (!dlg.PlaybackChanged) return;
 
@@ -1549,6 +1574,123 @@ public partial class MainWindow : Window
             PlaylistSummary.Text = "程序目录不可写，设置不会被保存";
     }
 
+    // ------------------------------------------------------------------ 可视化（M6 接入）
+
+    private VizWindow? _vizWindow;
+    private WindowHost? _vizHost;
+
+    /// <summary>
+    /// 程序性改勾选状态时置位。<c>IsChecked = x</c> **也会**触发 Checked/Unchecked，
+    /// 不挡一下就会「同步状态 → 触发回调 → 又去开关窗口」，而那个方向是反的。
+    /// </summary>
+    private bool _vizToggleSyncing;
+
+    /// <summary>
+    /// 快速开关。位置由用户 2026-09-20 定：播放列表行里「曲目数量」的左边。
+    ///
+    /// 它与设置页「可视化」页的总开关是**同一个值**（<c>AppSettings.Viz.Enabled</c>）——
+    /// 两处入口一个值，这也是设置窗口关掉后必须重读的原因。
+    /// </summary>
+    private void VizQuickToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_vizToggleSyncing) return;
+
+        AppSettings.Current.Viz.Enabled = VizQuickToggle.IsChecked == true;
+        AppSettings.Current.Save();
+        ApplyVizEnabled();
+    }
+
+    /// <summary>把设置里的总开关同步到勾选框（**只同步，不做开关动作**）。</summary>
+    private void SyncVizToggle()
+    {
+        _vizToggleSyncing = true;
+        VizQuickToggle.IsChecked = AppSettings.Current.Viz.Enabled;
+        _vizToggleSyncing = false;
+    }
+
+    /// <summary>
+    /// 按总开关打开 / 关掉可视化。**幂等**：已开着就只刷新，不会重建窗口
+    /// （重建会把画面历史、D 的余辉、以及贴附几何全丢掉）。
+    ///
+    /// ⚠️ 关掉时**必须先摘宿主再关窗**：宿主订阅还挂着的话，主窗口下一次移动/缩放/最大化
+    /// 还会推到那个已经关掉的窗口上，把它重新 <c>Show</c> 出来 —— 表现为「关了又自己冒出来」。
+    /// </summary>
+    private void ApplyVizEnabled()
+    {
+        SyncVizToggle();
+
+        if (!AppSettings.Current.Viz.Enabled)
+        {
+            CloseVizWindow();
+            return;
+        }
+
+        if (_vizWindow is not null)
+        {
+            _vizWindow.ApplyPanelVisibility();
+            SyncVizAttachment();
+            return;
+        }
+
+        if (_engine is null) return;   // 引擎已释放 = 正在关窗口，不必再开新窗口
+
+        var viz = new VizWindow(null, null, _engine.VizFeed);
+        _vizWindow = viz;
+
+        // Owner 必须在 Show 之前设。它免费给到三件事：恒在属主之上、随属主最小化/还原、
+        // **随属主关闭**（方案 R1 的根治点：因此不必去动 ShutdownMode）
+        viz.Owner = this;
+
+        SyncVizAttachment();       // 要不要贴附由设置决定（这里顺带建宿主）
+        viz.Show();
+        viz.RenderOnce();          // ⚠️ 未播放时也得画一帧，否则面板是空白（没「帧」就什么都不画）
+        viz.RefreshPlacement();    // 真正排完版再确认一次（Show 之前 ActualWidth 还没定）
+    }
+
+    /// <summary>
+    /// 让窗口的**贴附状态**与设置一致（幂等）。
+    ///
+    /// ⚠️ 关键在于它**在「窗口已开着」那条路径上也必须被调** ——
+    /// 原先只在**建窗口时**读一次「跟随主窗口」，于是运行中在设置里打开它要等
+    /// 关掉窗口重开才生效（实测就是这个症状）。贴附是一份**状态**，不是一次性动作。
+    /// </summary>
+    private void SyncVizAttachment()
+    {
+        if (_vizWindow is null) return;
+
+        bool want = AppSettings.Current.Viz.Attached;
+
+        if (want && _vizHost is null)
+        {
+            _vizHost = new WindowHost(this);
+            _vizWindow.Host = _vizHost;    // setter 内部会立刻算一次放置
+        }
+        else if (!want && _vizHost is not null)
+        {
+            _vizWindow.Host = null;        // 解除贴附（顺带恢复自由几何）
+            _vizHost.Dispose();
+            _vizHost = null;
+        }
+        else
+        {
+            _vizWindow.RefreshPlacement(); // 状态没变也重算一次（尺寸/面板可能变了）
+        }
+    }
+
+    /// <summary>关掉可视化窗口（幂等）。顺序：摘宿主 → 关窗 → 释放宿主。</summary>
+    private void CloseVizWindow()
+    {
+        if (_vizWindow is not null)
+        {
+            _vizWindow.Host = null;   // 先解除贴附（顺带把自由几何恢复回去）
+            _vizWindow.Close();
+            _vizWindow = null;
+        }
+
+        _vizHost?.Dispose();
+        _vizHost = null;
+    }
+
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         _tick?.Stop();
@@ -1562,6 +1704,10 @@ public partial class MainWindow : Window
         ui.Maximized = WindowState == WindowState.Maximized;
 
         AppSettings.Current.Save();
+
+        // 可视化窗口**先关**：它还挂在引擎的分接节点上读数据，
+        // 顺序反了就是「边读边释放」（与 VizWindow 内部那套顺序同一个道理）。
+        CloseVizWindow();
 
         _engine?.Dispose();
         _engine = null;

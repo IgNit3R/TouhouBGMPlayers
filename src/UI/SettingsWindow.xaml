@@ -267,6 +267,41 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+
+            <TabItem Header="可视化">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <TextBlock Text="总开关" Margin="0,0,0,8" FontWeight="SemiBold"/>
+                        <CheckBox x:Name="VizEnabledCheck" Content="启用可视化"/>
+                        <TextBlock Text="与主窗口那个快速开关是同一个值。关掉时附件窗口不出现。"
+                                   Margin="0,6,0,0" Foreground="{StaticResource TextFaint}" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="窗口" Margin="0,22,0,8" FontWeight="SemiBold"/>
+                        <CheckBox x:Name="VizAttachCheck" Content="跟随主窗口（贴在其右侧、与它等高）"/>
+                        <TextBlock Text="不勾选则是独立窗口：位置与尺寸自己拖、自己记住。"
+                                   Margin="0,6,0,0" Foreground="{StaticResource TextFaint}" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="与听觉对齐" Margin="0,22,0,8" FontWeight="SemiBold"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBox x:Name="VizLatencyBox" Width="80" Height="24"
+                                     VerticalContentAlignment="Center"/>
+                            <TextBlock Text="毫秒" Margin="8,0,0,0" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextDim}"/>
+                        </StackPanel>
+                        <TextBlock Text="画面读「约这么久之前」的样本。输出缓冲本身就是这么大，不补偿的话画面会早于声音。默认 100。"
+                                   Margin="0,6,0,0" Foreground="{StaticResource TextFaint}" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="显示哪几块" Margin="0,22,0,8" FontWeight="SemiBold"/>
+                        <CheckBox x:Name="VizShowACheck" Content="A · 频谱条"/>
+                        <CheckBox x:Name="VizShowBCheck" Content="B · 示波器"/>
+                        <CheckBox x:Name="VizShowCCheck" Content="C + J · 电平与相位"/>
+                        <CheckBox x:Name="VizShowDCheck" Content="D · 利萨如"/>
+                        <CheckBox x:Name="VizShowCoverCheck" Content="封面（预留）"/>
+                        <TextBlock Text="关掉只是不画，位置仍然占着 —— 否则每开关一次整块画面都会跳一下。"
+                                   Margin="0,6,0,0" Foreground="{StaticResource TextFaint}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
         </TabControl>
 
         <!-- 底部按钮：路径页的校验统一由「应用」触发 -->
