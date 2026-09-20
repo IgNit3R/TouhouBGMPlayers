@@ -153,6 +153,32 @@ public sealed class VizSettings
     [JsonPropertyName("showC")] public bool ShowC { get; set; } = true;
     [JsonPropertyName("showD")] public bool ShowD { get; set; } = true;
     [JsonPropertyName("showCover")] public bool ShowCover { get; set; } = true;
+
+    /// <summary>
+    /// D 利萨如的**余辉层数**（<see cref="MinTrailLayers"/>～<see cref="MaxTrailLayers"/>）。
+    ///
+    /// ⚠️ 这是可视化里**唯一真正有效的性能旋钮**：实测成本**正比于层数**，
+    /// **每层约 1.05ms**（用户 200Hz 屏标定：`帧距 ≈ 5.1 + 1.05 × 层数` 毫秒）。
+    /// 原因是「墨量」—— 每层铺下的**线长 × 线宽**，而 Lissajous 的路径长度
+    /// **随信号幅度增长**，这就是「音乐越响越掉帧」的由来。
+    ///
+    /// 标定（同一首曲子）：5 层 ≈ 9.4ms(~106fps) / **10 层 ≈ 16.3ms(~61fps)** /
+    /// 15 层 ≈ 21.6ms(~46fps) / 20 层 ≈ 26.7ms(~37fps)。
+    ///
+    /// <b>默认取 10</b>（2026-09-21 用户拍板）：观感上仍是明显的团雾，但帧率从 37 提到 61 ——
+    /// 新装的机器不该一打开就是 37fps。想要方案原定那份密实就调到 20
+    /// （渲染器的淡出系数会跟着重标定，所以调回去就是原来的观感）。
+    /// </summary>
+    [JsonPropertyName("trailLayers")] public int TrailLayers { get; set; } = DefaultTrailLayers;
+
+    /// <summary>余辉层数的上限：渲染器的槽位数组就开这么大，调不上去（= 方案原定的观感）。</summary>
+    public const int MaxTrailLayers = 20;
+
+    /// <summary>余辉层数的下限：再少就不像"雾"了。</summary>
+    public const int MinTrailLayers = 4;
+
+    /// <summary>余辉层数的默认值（见 <see cref="TrailLayers"/> 里的标定与取舍）。</summary>
+    public const int DefaultTrailLayers = 10;
 }
 
 /// <summary>

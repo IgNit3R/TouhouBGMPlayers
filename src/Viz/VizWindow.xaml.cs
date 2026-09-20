@@ -91,6 +91,7 @@ public partial class VizWindow : Window
         if (delayMs is double d) AppSettings.Current.Viz.LatencyOffsetMs = d;
 
         Closing += VizWindow_Closing;
+        SizeChanged += VizWindow_SizeChanged;
         Loaded += VizWindow_Loaded;
         PreviewKeyDown += VizWindow_PreviewKeyDown;   // 空格 = 暂停/继续（隔离期专用，见方法注释）
 
@@ -238,6 +239,37 @@ public partial class VizWindow : Window
 
         // 不管可见与否都把帧推出去 —— 内嵌宿主靠它拿同一帧。
         FrameReady?.Invoke(_analyzer.Frame);
+
+        // 统计叠层抽稀刷新（约 4Hz；藏着时一次字符串都不造）
+        if (StatsOverlay.Visibility == Visibility.Visible && ++_statsTick % 15 == 0) UpdateStatsText();
+    }
+
+    /// <summary>统计叠层的抽稀计数（见 <see cref="UpdateStatsText"/>）。</summary>
+    private int _statsTick;
+
+    /// <summary>上一次由放置判定写进去的宽度。用来分辨「窗口变窄了」是自己算的还是用户拖的。</summary>
+    private double _lastAppliedWidth = double.NaN;
+
+    /// <summary>
+    /// 用户**拖右边缘**改了宽度 → 立刻写回设置。
+    ///
+    /// ⚠️ 这一条不是锦上添花，是修一个实测 bug：原来只在 <c>Closing</c> 才回写设置，
+    /// 于是运行期「拖宽 → 切最大化 → 还原」时，还原那一步是按**设置里那个旧宽度**
+    /// 重算几何的 —— 用户拖出来的宽度当场就丢了（最小化→还原同样）。
+    /// 最大化时之所以"记住了"，是因为内嵌那一列的宽度走的是另一条路
+    /// （`EmbeddedWidth`，拖分隔条时即时落盘）✓ 两条路径不一致才显出这个症状。
+    ///
+    /// 判据是「当前宽度 ≠ 上一次判定的宽度」：自己在最大化/还原时改的尺寸不算，
+    /// 否则被工作区夹过的窄宽度会被当成用户的意愿反复写回（越夹越窄）。
+    /// </summary>
+    private void VizWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (!AttachedMode || WindowState != WindowState.Normal) return;
+        if (!double.IsFinite(_lastAppliedWidth)) return;
+        if (Math.Abs(Width - _lastAppliedWidth) <= 1.0) return;
+
+        // 只改内存里的值：文件由 Closing 统一写一次（拖动会连续触发，不该每次都落盘）
+        AppSettings.Current.Viz.Width = Width;
     }
 
     /// <summary>
@@ -458,6 +490,7 @@ public partial class VizWindow : Window
 
         if (a.SetBounds)
         {
+            _lastAppliedWidth = a.Width;      // 记下来，好分辨「窗口变窄了」是自己算的还是用户拖的
             Left = a.Left;
             Top = a.Top;
             Width = a.Width;
@@ -477,6 +510,43 @@ public partial class VizWindow : Window
         // 宿主被摘掉再装回来、或者尺寸变了都可能需要对方重算，多通知一次不花钱。
         PlacementChanged?.Invoke();
     }
+
+    /// <summary>
+    /// 切换帧统计叠层（F12）。**打开时顺手复位峰值** ——
+    /// 于是「开关一次 → 操作一遍 → 读峰值」本身就是一次干净的测量，不必再单独按复位键。
+    /// （要中途复位按 R。）
+    /// </summary>
+    private void ToggleStats()
+    {
+        bool show = StatsOverlay.Visibility != Visibility.Visible;
+        StatsOverlay.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!show) return;
+
+        _pump?.ResetPeaks();
+        UpdateStatsText();
+    }
+
+    /// <summary>
+    /// 把统计刷进叠层。**抽稀**（约 4Hz）：它是给人看的瞬时读数，
+    /// 60Hz 刷它只会白造字符串（每帧一个 string 进 GC 不值得）。
+    /// </summary>
+    private void UpdateStatsText()
+    {
+        if (StatsOverlay.Visibility != Visibility.Visible || _pump is null) return;
+
+        StatsText.Text =
+            $"帧 {_pump.FrameCount}　帧距 均 {_pump.IntervalAvgMs:0.0} 峰 {_pump.IntervalPeakMs:0.0}ms　" +
+            $"分析 均 {_pump.AnalyzeAvgMs:0.00} 峰 {_pump.AnalyzePeakMs:0.0}ms　" +
+            $"绘制 均 {_pump.RenderAvgMs:0.00} 峰 {_pump.RenderPeakMs:0.0}ms　" +
+            $"节拍停 {_pump.IdleStoppedCount} 次　" +
+            // 渲染能力等级：0 = 软件渲染（那时光栅化的账全在 CPU 上，完全能解释"CPU 不忙却掉帧"）。
+            // 余辉层数：D 的绘制面积随它和信号幅度一起涨 —— 掉帧是否随之起伏，看这两个数最快。
+            $"渲染 {System.Windows.Media.RenderCapability.Tier >> 16} 余辉 {TrailLayers}";
+    }
+
+    /// <summary>D 当前在画几层余辉（诊断用；渲染器不是 <see cref="IVizRenderer"/> 就能拿到）。</summary>
+    private int TrailLayers => _renderers.Lissajous is LissajousRenderer l ? l.TrailCount : -1;
 
     /// <summary>
     /// 拖动窗口。<c>WindowStyle=None</c> + <c>CaptionHeight=0</c> 之后没有可拖的标题栏，
@@ -510,6 +580,22 @@ public partial class VizWindow : Window
     /// </summary>
     private void VizWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        // ---- 诊断键：不属于产品功能，见 docs/2026-09-21-viz-frame-pacing-pending.md ----
+        if (e.Key == System.Windows.Input.Key.F12)
+        {
+            ToggleStats();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == System.Windows.Input.Key.R)
+        {
+            _pump?.ResetPeaks();
+            UpdateStatsText();
+            e.Handled = true;
+            return;
+        }
+
         // 只对自己建的调试声源管用：接入期暂停由播放器控制，窗口不该有第二个暂停入口
         if (e.Key != System.Windows.Input.Key.Space || _debugFeed is null) return;
 

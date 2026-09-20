@@ -48,8 +48,54 @@ public sealed class VizPump : IDisposable
     /// <summary>
     /// 因为「落定」而自己退订的次数。<b>§8.1#4「暂停后 CPU 回落」这条验收就靠它举证</b>
     /// —— 只盯着任务管理器说「CPU 好像降了」是不算证据的。
+    ///
+    /// ⚠️ 它也是「掉帧感」的头号嫌疑的判据：**正常播放时它不该涨**。
+    /// 涨了说明音频侧出现过 &gt;250ms 的断续（见 docs 里那条待查档）。
     /// </summary>
     public long IdleStoppedCount { get; private set; }
+
+    // ------------------------------------------------------------------ 帧耗时统计
+    //
+    // 用途只有一个：**分诊** —— 有「掉帧感」时一眼看出是「分析慢」「绘制慢」还是
+    // 「节拍自己停了又起」（IdleStoppedCount）。所以只记平均 + 峰值，不记分布：
+    // 要的是判断走哪条路，不是出一份性能报告。
+    // 见 docs/2026-09-21-viz-frame-pacing-pending.md。
+
+    private const double StatsSmoothing = 0.05;
+
+    /// <summary>tick → 毫秒。⚠️ 不能写成 <c>const</c>（<c>Stopwatch.Frequency</c> 不是编译期常量，CS0133）。</summary>
+    private static readonly double MsPerTick = 1000.0 / Stopwatch.Frequency;
+
+    private TimeSpan _lastIntervalTime = TimeSpan.MinValue;
+
+    /// <summary>相邻两帧的间隔（毫秒）。60Hz 屏约 16.7、144Hz 约 6.9。</summary>
+    public double IntervalAvgMs { get; private set; }
+
+    /// <summary>
+    /// 相邻两帧间隔的峰值（毫秒）。<b>掉帧最直接的证据</b> ——
+    /// 它跳到两倍刷新周期就是**实打实丢了一帧**，比 CPU 耗时更能说明"卡了一下"。
+    /// </summary>
+    public double IntervalPeakMs { get; private set; }
+
+    /// <summary>分析（含 FFT）的平均耗时（毫秒）。</summary>
+    public double AnalyzeAvgMs { get; private set; }
+
+    /// <summary>分析（含 FFT）的峰值耗时（毫秒）。</summary>
+    public double AnalyzePeakMs { get; private set; }
+
+    /// <summary>绘制（录绘制指令那一整段）的平均耗时（毫秒）。</summary>
+    public double RenderAvgMs { get; private set; }
+
+    /// <summary>绘制的峰值耗时（毫秒）。</summary>
+    public double RenderPeakMs { get; private set; }
+
+    /// <summary>把三个峰值清零（平均值与计数保留）——「复位 → 复现 → 读数」用。</summary>
+    public void ResetPeaks()
+    {
+        IntervalPeakMs = 0;
+        AnalyzePeakMs = 0;
+        RenderPeakMs = 0;
+    }
 
     /// <summary>不播之后最多再跑这么久就退订。淡影正常约 0.5s 收敛，这里是兜底。</summary>
     public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromSeconds(1.5);
@@ -57,6 +103,12 @@ public sealed class VizPump : IDisposable
     public void Start()
     {
         _idleSince = -1;
+
+        // ⚠️ 一起复位"上一帧时刻"：退订期间过掉的时间不该被算成"一帧卡了 3 秒"。
+        // 这个字段同时被去重逻辑用（同一帧的重复通知要吞掉），复位的语义是一致的。
+        _lastRenderingTime = TimeSpan.MinValue;
+        _lastIntervalTime = TimeSpan.MinValue;
+
         if (_running) return;
         _running = true;
         CompositionTarget.Rendering += OnRendering;
@@ -85,19 +137,27 @@ public sealed class VizPump : IDisposable
 
     private void OnRendering(object? sender, EventArgs e)
     {
-        // 同一帧的重复通知直接吞掉（见类型注释）
+        // 同一帧的重复通知直接吞掉（见类型注释）。
+        // ⚠️ 顺手把合成时刻存进局部变量：模式变量 args 只在 if 块内确定赋值，
+        // 后面（Accumulate 那行）是够不着的（CS0165 就是这么来的）。
+        TimeSpan? renderingTime = null;
         if (e is RenderingEventArgs args)
         {
             if (args.RenderingTime == _lastRenderingTime) return;
             _lastRenderingTime = args.RenderingTime;
+            renderingTime = args.RenderingTime;
         }
 
         // Update 内部按 60Hz 自我节流；被跳过时它什么都不做，我们照旧渲染上一帧 ——
         // 高频屏上画面是「同一帧画两遍」，肉眼不可辨，但平滑弹道稳定在 60Hz。
+        long t0 = Stopwatch.GetTimestamp();
         _analyzer.Update();
+        long t1 = Stopwatch.GetTimestamp();
 
         FrameCount++;
         _render();
+
+        Accumulate(t1 - t0, Stopwatch.GetTimestamp() - t1, renderingTime);
 
         // ⚠️ 顺序要紧：**先画再判**。最后一帧得把落定后的画面画出去，
         // 否则画面会停在「还差一点」的样子上，而节拍已经退订、再也没人来补这一帧。
@@ -122,4 +182,51 @@ public sealed class VizPump : IDisposable
             IdleStoppedCount++;
         }
     }
+
+    /// <summary>
+    /// 收一笔统计。**指数滑动平均**（不存历史、零分配）。
+    ///
+    /// ⚠️ 连计时本身也要顾虑开销：`Stopwatch.GetTimestamp()` 是几十纳秒级的，一帧两次可忽略；
+    /// 但**不要**在这里加环缓冲或做分布统计 —— 那就变成「为了量它而拖慢它」，
+    /// 而这段代码跑在每帧路径上。
+    /// </summary>
+    private void Accumulate(long analyzeTicks, long renderTicks, TimeSpan? renderingTime)
+    {
+        double analyze = analyzeTicks * MsPerTick;
+        double render = renderTicks * MsPerTick;
+
+        AnalyzeAvgMs += (analyze - AnalyzeAvgMs) * StatsSmoothing;
+        RenderAvgMs += (render - RenderAvgMs) * StatsSmoothing;
+
+        if (analyze > AnalyzePeakMs) AnalyzePeakMs = analyze;
+        if (render > RenderPeakMs) RenderPeakMs = render;
+
+        // 帧距：用 DWM 给的**合成时刻**算，而不是本地时钟 —— 那才是「这一帧什么时候该上屏」。
+        if (renderingTime is TimeSpan now)
+        {
+            bool hasPrevious = _lastIntervalTime != TimeSpan.MinValue;
+            double interval = hasPrevious ? (now - _lastIntervalTime).TotalMilliseconds : 0;
+
+            if (CountInterval(hasPrevious, interval))
+            {
+                IntervalAvgMs += (interval - IntervalAvgMs) * StatsSmoothing;
+                if (interval > IntervalPeakMs) IntervalPeakMs = interval;
+            }
+
+            _lastIntervalTime = now;
+        }
+    }
+
+    /// <summary>
+    /// 这个帧距样本要不要计入统计（纯函数，自检直接驱动）。
+    ///
+    /// 两条边界都不是假想，且**错了不会报错、只会让峰值变成垃圾**，进而把整个分诊带偏：
+    /// <list type="bullet">
+    /// <item><b>没有上一帧可比</b>（刚 <see cref="Start"/>）：退订期间过掉的时间
+    ///   （可能几秒）会被算成「一帧卡了 3 秒」。</item>
+    /// <item><b>非正的间隔</b>：时钟回退、或重启边界上合成时刻不单调。</item>
+    /// </list>
+    /// </summary>
+    internal static bool CountInterval(bool hasPrevious, double intervalMs)
+        => hasPrevious && intervalMs > 0;
 }

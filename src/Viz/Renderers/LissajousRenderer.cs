@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using ThbgmPlayer.Core;
 
 namespace ThbgmPlayer.Viz.Renderers;
 
@@ -61,6 +62,43 @@ public sealed class LissajousRenderer : IVizRenderer
     /// <summary>余辉层数。参照页的轨迹在 <c>0.84^20 ≈ 0.03</c> 处基本看不见了，取 20 正好覆盖。</summary>
     private const int TrailLayers = 20;
 
+    /// <summary>
+    /// **实际画几层**（设置里可调，默认 10 —— 见 <see cref="VizSettings.TrailLayers"/>）。
+    ///
+    /// ⚠️ 这是可视化里**唯一真正有效的性能旋钮**。实测（用户 200Hz 屏）：
+    /// 20 层约 25ms/帧、关掉 D 掉到 5.1ms ⇒ **成本正比于层数**（约 1ms/层）；
+    /// 而把每层折线的段数**砍半只降 9%** ⇒ 不是每段的账。
+    /// 原因在「墨量」—— 每层铺下的**线长 × 线宽**，而 Lissajous 的路径长度
+    /// **随信号幅度增长**（响的时候点在整块团里乱窜、走的路线更长），
+    /// 这就是「音乐越响越掉帧」的由来。层数少一半，墨量少一半。
+    ///
+    /// 见 docs/2026-09-21-viz-frame-pacing-pending.md。
+    /// </summary>
+    private static int DrawnLayers
+    {
+        get
+        {
+            int n = AppSettings.Current.Viz.TrailLayers;
+
+            if (n < VizSettings.MinTrailLayers) n = VizSettings.MinTrailLayers;
+            if (n > TrailLayers) n = TrailLayers;
+
+            return n;
+        }
+    }
+
+    /// <summary>
+    /// 投影进几何时的**点间距**（抽稀）。数据窗口仍是 <see cref="PointCount"/> 个样本，
+    /// 只是画的时候每隔 <see cref="PointStride"/> 个取一个。
+    ///
+    /// 抽到什么程度：让相邻两点的屏幕间距约 2~3px。400 点投到两三百像素的团上，
+    /// 本来就有 2~3 点/像素 —— 稠的那部分纯属白送。
+    ///
+    /// ⚠️ 这一改**没有解决掉帧**：段数砍半、帧距只降 9%（实测）—— 真正的杠杆是
+    /// <see cref="DrawnLayers"/>。留着它是因为它把每帧分配减半、无害。
+    /// （教训：当时按「每段成本」推断，测出来是「每层成本」。**先有测量再下结论**。）
+    /// </summary>
+    private const int PointStride = 2;
     /// <summary>播放中的每帧衰减（参照页覆盖色 <c>0.16</c> → 保留 <c>0.84</c>）。</summary>
     private const float ActiveFade = 0.84f;
 
@@ -190,7 +228,9 @@ public sealed class LissajousRenderer : IVizRenderer
         if (_count <= 0) return;
 
         // 自旧到新叠画：新的压在旧的上面（「over」合成），与参照页的位图累积同向。
-        for (int age = _count - 1; age >= 0; age--)
+        // ⚠️ 只画最近的 DrawnLayers 层 —— **成本正比于层数**（见 DrawnLayers 的注释）。
+        int layers = Math.Min(_count, DrawnLayers);
+        for (int age = layers - 1; age >= 0; age--)
         {
             int slot = _head - age;
             if (slot < 0) slot += TrailLayers;
@@ -236,7 +276,12 @@ public sealed class LissajousRenderer : IVizRenderer
     {
         if (f.Active)
         {
-            for (int k = 0; k < TrailLayers; k++) _alpha[k] *= ActiveFade;
+            // 淡出**按「画几层」重新标定**：画满 20 层时指数正是 1（与原先的 0.84 完全一致）；
+            // 调到 n 层时每格多退几步，于是**最老那一层仍然落在同一档亮度**上 ——
+            // 观感是「雾薄了、渐变粗了」，而不是「外面多出一圈硬边」。
+            // ⚠️ 名字不能叫 fade：同一方法里"暂停分支"已经用掉那个名字了（CS0136）。
+            float decay = (float)Math.Pow(ActiveFade, (double)TrailLayers / DrawnLayers);
+            for (int k = 0; k < TrailLayers; k++) _alpha[k] *= decay;
 
             _head++;
             if (_head >= TrailLayers) _head = 0;
@@ -299,8 +344,14 @@ public sealed class LissajousRenderer : IVizRenderer
         using (StreamGeometryContext g = geo.Open())
         {
             g.BeginFigure(new Point(cx + _trailL[off] * r, cy - _trailR[off] * r), false, false);
-            for (int p = 1; p < PointCount; p++)
+
+            for (int p = PointStride; p < PointCount; p += PointStride)
                 g.LineTo(new Point(cx + _trailL[off + p] * r, cy - _trailR[off + p] * r), true, false);
+
+            // 末点一定要收进来：否则折线的终点会差一截 —— 那是**看得出来的**
+            int last = PointCount - 1;
+            if (last > 0 && last % PointStride != 0)
+                g.LineTo(new Point(cx + _trailL[off + last] * r, cy - _trailR[off + last] * r), true, false);
         }
         if (geo.CanFreeze) geo.Freeze();
 

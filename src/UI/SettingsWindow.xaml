@@ -304,6 +304,15 @@
                         <CheckBox x:Name="VizShowCoverCheck" Content="封面（预留）"/>
                         <TextBlock Text="关掉只是不画，位置仍然占着 —— 否则每开关一次整块画面都会跳一下。"
                                    Margin="0,6,0,0" Foreground="{StaticResource TextFaint}" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="性能" Margin="0,22,0,8" FontWeight="SemiBold"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="D 余辉层数" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBox x:Name="VizLayersBox" Width="80" Height="24"
+                                     VerticalContentAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Text="4～20，默认 10。这是唯一真正有效的性能旋钮：实测成本正比于层数（每层约 1ms），嫌掉帧就往小调 —— 层数少一半，画面里的墨迹也少一半。调小后「雾」会变薄、渐变变粗，但整体深浅不变。"
+                                   Margin="0,6,0,0" Foreground="{StaticResource TextFaint}" TextWrapping="Wrap"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

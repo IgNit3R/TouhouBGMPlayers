@@ -111,11 +111,27 @@ public sealed class WindowHost : IVizHost, IDisposable
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(NativePoint pt, uint flags);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hWnd);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+
+        public NativePoint(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
@@ -171,8 +187,13 @@ public sealed class WindowHost : IVizHost, IDisposable
     /// <summary>
     /// 宿主**所在那块显示器**的工作区（DIP，已排除任务栏）——「绝不跑出屏幕」靠它。
     ///
-    /// ⚠️ 不能用 <c>SystemParameters.WorkArea</c>：那个是**主显示器**的。
-    /// 主窗口在副屏时，拿它去算「贴右侧」会把窗口定位到主屏边缘去。
+    /// ⚠️ 不能用 <c>SystemParameters.WorkArea</c>：那是**主显示器**的，
+    /// 主窗口在副屏时拿它去算「贴右侧」会把窗口定位到主屏边缘去。
+    ///
+    /// ⚠️ 也不能用 <c>MonitorFromWindow</c>：它按整窗与各屏的重叠挑，
+    /// 于是主窗口刚跨过去一半（中心已在新屏、右边缘还在旧屏）时工作区就跳了 ——
+    /// 表现为「**主窗口还没完全拉过去，可视化窗口先跳过去了**」（用户 2026-09-21 实测报的）。
+    /// 贴附窗口的去处由**宿主的右边缘**决定，所以这里就按右边缘那一点取显示器。
     /// </summary>
     public VizWorkArea WorkArea
     {
@@ -181,14 +202,23 @@ public sealed class WindowHost : IVizHost, IDisposable
             IntPtr hwnd = new WindowInteropHelper(_window).Handle;
             if (hwnd != IntPtr.Zero)
             {
-                IntPtr monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+                var b = Bounds;
+                double scale = DpiScale(hwnd);
+
+                // 右边缘往右 1px、顶边往下 8px 那一点 —— 它落在哪块屏，贴附窗口就去哪块。
+                IntPtr monitor = double.IsFinite(b.Right)
+                    ? MonitorFromPoint(
+                        new NativePoint((int)Math.Round((b.Right + 1) * scale),
+                                        (int)Math.Round((b.Top + 8) * scale)),
+                        MonitorDefaultToNearest)
+                    : MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+
                 var info = new MonitorInfo { CbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
 
                 if (monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref info))
                 {
                     // ⚠️ GetMonitorInfo 给的是**物理像素**，这里要 DIP。
                     // 进程是系统 DPI 感知的（方案 R6），所以整块屏只有一个固定缩放比。
-                    double scale = DpiScale(hwnd);
                     return new VizWorkArea(
                         info.Work.Left / scale, info.Work.Top / scale,
                         info.Work.Right / scale, info.Work.Bottom / scale);

@@ -178,6 +178,7 @@ internal static class VizSelfTest
         var after = back.Viz;
         bool memOk =
             after.Enabled == before.Enabled &&
+            after.TrailLayers == before.TrailLayers &&
             after.Width == before.Width && after.Height == before.Height &&
             after.Left == before.Left && after.Top == before.Top &&
             after.Attached == before.Attached && after.EmbedWhenMaximized == before.EmbedWhenMaximized &&
@@ -205,6 +206,7 @@ internal static class VizSelfTest
             probe.Viz.ShowA = false;
             probe.Viz.ShowD = false;
             probe.Viz.Enabled = true;
+            probe.Viz.TrailLayers = 12;
 
             diskOk = AppPaths.WriteTextAtomic(ScratchSettingsFile, JsonSerializer.Serialize(probe, opts));
             if (diskOk)
@@ -217,7 +219,7 @@ internal static class VizSelfTest
                          v.Attached && !v.EmbedWhenMaximized &&
                          v.EmbeddedWidth == 388 && v.LatencyOffsetMs == 87.5 &&
                          v.DebugSource == @"D:\曲\th17_13.wav" &&
-                         !v.ShowA && v.ShowB && v.ShowC && !v.ShowD && v.ShowCover && v.Enabled;
+                         !v.ShowA && v.ShowB && v.ShowC && !v.ShowD && v.ShowCover && v.Enabled && v.TrailLayers == 12;
                 probeNote = diskOk ? "落盘往返 ok" : "写进去读回来不一致";
             }
             else
@@ -247,12 +249,13 @@ internal static class VizSelfTest
         bool defaultsOk =
             fresh.Attached && !fresh.Enabled &&
             fresh.ShowA && fresh.ShowB && fresh.ShowC && fresh.ShowD && fresh.ShowCover &&
+            fresh.TrailLayers == VizSettings.DefaultTrailLayers &&
             Math.Abs(fresh.LatencyOffsetMs - 100) < 1e-9 &&
             Math.Abs(fresh.Width - 560) < 1e-9 &&
             fresh.EmbedWhenMaximized;
 
         bool ok = memOk && diskOk && defaultsOk;
-        string detail = $"内存往返={Show(memOk)}；默认值（贴附/关/五块全开/延迟100）={Show(defaultsOk)}；{probeNote}；" +
+        string detail = $"内存往返={Show(memOk)}；默认值（贴附/关/五块全开/余辉{VizSettings.DefaultTrailLayers}/延迟100）={Show(defaultsOk)}；{probeNote}；" +
                         $"当前值 {before.Width:0.#}×{before.Height:0.#} 延迟 {before.LatencyOffsetMs:0.#}ms";
 
         return new Result("VizSettings 序列化往返（内存 + 落盘）", ok, detail);
@@ -1257,6 +1260,19 @@ internal static class VizSelfTest
             Row("未落定·差一点到限", false, false, 1.499, false);
             Row("未落定·正好到限", false, false, 1.500, true);
             Row("未落定·超限", false, false, 5.0, true);
+
+            // 帧距统计的两条边界（诊断用，见 docs/2026-09-21-viz-frame-pacing-pending.md）。
+            // 错了不会报错、只会让**峰值变成垃圾**，进而把整次分诊带偏 —— 所以锁住。
+            bool intervalOk =
+                !VizPump.CountInterval(false, 16.7) &&      // 没有上一帧可比（刚 Start）→ 不收
+                VizPump.CountInterval(true, 16.7) &&        // 正常间隔 → 收
+                !VizPump.CountInterval(true, 0) &&          // 非正（时钟回退/重启边界）→ 不收
+                !VizPump.CountInterval(true, -5);
+
+            ok &= intervalOk;
+            rows.Add(intervalOk
+                ? "帧距边界：无上一帧/非正间隔都不计入"
+                : "✗ 帧距边界判据不对（会把退订时长或时钟回退算成峰值）");
 
             return new Result(Title, ok,
                 $"上限 {Limit}s｜" + string.Join("；", rows));

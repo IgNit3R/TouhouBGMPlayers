@@ -451,6 +451,7 @@ public partial class SettingsWindow : Window
         VizShowCCheck.IsChecked = viz.ShowC;
         VizShowDCheck.IsChecked = viz.ShowD;
         VizShowCoverCheck.IsChecked = viz.ShowCover;
+        VizLayersBox.Text = viz.TrailLayers.ToString(CultureInfo.InvariantCulture);
     }
 
     private void ApplyViz()
@@ -474,6 +475,15 @@ public partial class SettingsWindow : Window
         viz.ShowC = VizShowCCheck.IsChecked == true;
         viz.ShowD = VizShowDCheck.IsChecked == true;
         viz.ShowCover = VizShowCoverCheck.IsChecked == true;
+
+        // 余辉层数：非法输入就当没改；夹在 [4, MaxTrailLayers]（渲染器的槽位数组只有那么大）
+        if (int.TryParse(VizLayersBox.Text, NumberStyles.Integer,
+                         CultureInfo.InvariantCulture, out int layers))
+        {
+            if (layers < VizSettings.MinTrailLayers) layers = VizSettings.MinTrailLayers;
+            if (layers > VizSettings.MaxTrailLayers) layers = VizSettings.MaxTrailLayers;
+            viz.TrailLayers = layers;
+        }
     }
 
     /// <summary>校验全部路径、写回设置并保存。只有点「应用 / 确定」才会走到这里。</summary>

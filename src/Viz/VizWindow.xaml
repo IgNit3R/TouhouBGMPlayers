@@ -93,6 +93,30 @@
             分区比例（2.3:1、7:3、第二组平分）都在 VizSurfaceHost 里面。
             -->
             <viz:VizSurfaceHost x:Name="Surface" Grid.Row="1"/>
+
+            <!--
+            帧统计叠层（诊断用，默认藏着）：F12 切换、R 复位峰值。
+            见 docs/2026-09-21-viz-frame-pacing-pending.md —— 有「掉帧感」时靠它分诊：
+            帧距（掉帧最直接的证据）/ 分析耗时 / 绘制耗时 / 节拍自停次数。
+
+            ⚠️ 它是**叠层**：贴角、不参与尺寸协商，所以不会动 2.3:1 / 7:3 那套分区比例，
+            布局自检照旧量得到同一组数（关着时更是完全不参与视觉）。
+            -->
+            <Border x:Name="StatsOverlay" Grid.Row="1"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Margin="8" Padding="8,4"
+                    Background="{StaticResource BgElevated}"
+                    BorderBrush="{StaticResource Border}"
+                    BorderThickness="1"
+                    CornerRadius="2"
+                    Opacity="0.92">
+                <TextBlock x:Name="StatsText"
+                           Foreground="{StaticResource TextDim}"
+                           FontFamily="Consolas, Cascadia Mono, Courier New"
+                           FontSize="12"/>
+            </Border>
         </Grid>
     </Border>
 </Window>
