@@ -61,6 +61,9 @@ internal static class VizSelfTest
         // M3：放置判定与窗口缩放的用例表（方案 §3.6 / §3.7），条目格式与上面一致
         results.AddRange(VizPlacementSelfTest.Run());
 
+        // 2026-09-23：主窗口新增的整轨波形（分桶 / 缩放 / 跟随 / 文件位置 / 标记 / 键 / 选源 / 取消）
+        results.AddRange(UI.WaveformSelfTest.Run());
+
         int fail = results.Count(r => !r.Ok);
 
         var log = new StringBuilder();

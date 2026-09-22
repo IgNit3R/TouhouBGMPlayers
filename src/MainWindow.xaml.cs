@@ -429,6 +429,7 @@ public partial class MainWindow : Window
                 NowPlayingText.Text = "未播放";
                 NowPlayingDetail.Text = "—";
                 UpdateVizCover(null);      // 什么都没在放 → 封面退回占位
+                Waveform.SetTrack(null, false);   // 波形同理（别留着上一首的形状；无峰值时标记参数无意义）
             }
             AltButton.IsEnabled = false;
             UpdateFavoriteButton();
@@ -471,6 +472,103 @@ public partial class MainWindow : Window
         RefreshNowPlaying();
 
         UpdateVizCover(game.Id);           // 封面跟随**正在播放的那首曲子**
+        RefreshWaveform(game, track);      // 波形同理：只跟播放走
+    }
+
+    // ---------- 整轨波形 ----------
+
+    /// <summary>在途的扫描（切曲要取消它）。</summary>
+    private CancellationTokenSource? _waveCts;
+
+    /// <summary>代数：扫描回调回来时比对，不是最新一代就丢弃（用 <see cref="PreloadCache"/> 同一套手法）。</summary>
+    private long _waveGen;
+
+    /// <summary>
+    /// 换曲 / 切主副版时刷波形。命中缓存就直接显示，否则清空并起一次后台扫描。
+    ///
+    /// ⚠️ 扫描是**独立建源**的（见 <see cref="TrackScanner"/>），不碰播放链 ——
+    /// 所以这里不用担心打断正在播的音频。
+    /// </summary>
+    private void RefreshWaveform(GameDef game, TrackDef track)
+    {
+        bool useAlt = _engine?.UsingAlt == true;
+        var td = TrackScanner.Pick(track, useAlt);
+
+        // 曲目本身是不是一次性（黄昏作 ED / Staff Roll）—— 传状态本身，别传它的否定
+        bool isTfOneShot = td.IsTfOneShot;
+
+        var cached = WaveformCache.Get(game, track, useAlt);
+        if (cached is not null)
+        {
+            Waveform.SetTrack(cached, isTfOneShot);
+            return;
+        }
+
+        // 换曲时旧波形不能留着（那是上一首的形状，会看错）
+        Waveform.SetTrack(null, isTfOneShot);
+
+        _waveCts?.Cancel();
+
+        var cts = new CancellationTokenSource();
+        _waveCts = cts;
+
+        _ = ScanWaveformAsync(game, track, useAlt, isTfOneShot, cts.Token, ++_waveGen);
+    }
+
+    /// <summary>波形播放头是否已挂上帧回调。</summary>
+    private bool _waveFrameHooked;
+
+    /// <summary>
+    /// 播放头的节拍：**跟 vsync**（<c>CompositionTarget.Rendering</c>），不是 100ms 定时器。
+    ///
+    /// ⚠️ 这条是踩过来的：一开始我把播放头挂在既有的 100ms 轮询上 ⇒ **每秒只动 10 次**，
+    /// 缩放后（一屏 6 秒）每次更新跳 6 像素，看着就是"一格一跳" ✗。
+    /// 可视化那边早就写明过这条（`Viz/VizPump.cs:9-11`：「DispatcherTimer 是定时器节拍，
+    /// 和显示器的刷新没有关系」），我照抄了它的结论却没照做 ✗。
+    ///
+    /// ⚠️ 只在播放中订阅、暂停即退订 —— 跟可视化一个纪律：**不常驻空转**。
+    /// 订阅与退订由 100ms 轮询做"状态同步"（引擎没有播放状态事件），最多晚一拍（100ms），
+    /// 换来的是播放中每帧都刷。
+    /// </summary>
+    private void HookWaveFrame(bool on)
+    {
+        if (on == _waveFrameHooked) return;
+        _waveFrameHooked = on;
+
+        if (on) System.Windows.Media.CompositionTarget.Rendering += OnWaveFrame;
+        else System.Windows.Media.CompositionTarget.Rendering -= OnWaveFrame;
+    }
+
+    /// <summary>每帧把播放头喂给波形面板（内部有"挪动不足 1 像素就不重绘"的门槛）。</summary>
+    private void OnWaveFrame(object? sender, EventArgs e)
+    {
+        if (_engine is null || !_engine.IsPlaying)
+        {
+            HookWaveFrame(false);   // 兜底：万一暂停那拍没同步到
+            return;
+        }
+
+        Waveform.SetEnginePosition(_engine.ProgressPosition, _engine.LoopPosition);
+    }
+
+    /// <summary>
+    /// 后台扫完再回 UI 线程摆图。
+    /// ⚠️ 直接用 <c>await</c>（不配 <c>ConfigureAwait(false)</c>）就会回到 UI 线程的同步上下文上 ——
+    /// 比手写 <c>Dispatcher.InvokeAsync</c> 少一层缩进，也不容易漏掉线程归属。
+    /// </summary>
+    private async Task ScanWaveformAsync(GameDef game, TrackDef track, bool useAlt, bool isTfOneShot,
+                                         CancellationToken ct, long gen)
+    {
+        var peaks = await TrackScanner.ScanAsync(game, track, useAlt, ct);
+
+        if (peaks is null || gen != _waveGen) return;   // 扫失败 / 被取消 / 已经是上一首了
+
+        WaveformCache.Put(game, track, useAlt, peaks);
+        Waveform.SetTrack(peaks, isTfOneShot);
+
+        // 立刻把播放头摆到位，不然要等下一次 100ms 轮询才出现
+        Waveform.SetEnginePosition(_engine?.ProgressPosition ?? TimeSpan.Zero,
+                                   _engine?.LoopPosition ?? TimeSpan.Zero);
     }
 
     /// <summary>
@@ -653,6 +751,10 @@ public partial class MainWindow : Window
         // （停搏归 VizPump 自己：淡影收敛或 1.5s 上限后自退订）。
         // 放在「未播放就 return」之前 —— 它只在播时动作，但这样读起来才是「状态同步」。
         _vizWindow?.RefreshFeedState();
+
+        // 波形播放头同样借这里做**开关**（同样必须在"未播放就 return"之前，否则暂停时退不掉）：
+        // 播放中订阅 vsync 帧回调，暂停/停止就退订 —— 不常驻空转。
+        HookWaveFrame(_engine.IsPlaying);
 
         if (!_engine.IsPlaying)
         {
@@ -1184,6 +1286,7 @@ public partial class MainWindow : Window
         RefreshVariantControls();
         RefreshNowPlaying();
         UpdateVizCover(game.Id);      // 主副版切换 → 封面跟着换（th06nc 新典/原典就是这两张）
+        RefreshWaveform(game, track); // 波形同理：主副版是两条不同的音频，缓存键也不同
 
         // 切过去之后把「另一版本」预读上，来回 A/B 对比也是零等待
         PreloadCache.Preload(game, track, !_engine.UsingAlt);
@@ -1417,6 +1520,7 @@ public partial class MainWindow : Window
     private void ApplySettingsSideEffects(SettingsWindow dlg)
     {
         PreloadCache.Clear();   // 路径可能改了，缓存里的音源指向旧文件，必须丢
+        WaveformCache.Clear();  // 同理：旧峰值按旧文件扫的，留着会画出一个不该存在的波形
 
         // 路径可能变了，重建下拉（连收藏与自定义列表一起）
         RebuildPlaylistsKeepSelection();

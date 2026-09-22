@@ -78,6 +78,11 @@
          VizBar  ：频谱柱、电平柱体（示波器右声道与相位指针复用 Emphasis #9CDCFE，
                    示波器左声道与利萨如、相位指针复用 VizLineL —— 同族双蓝，不引入新色相）。 -->
     <SolidColorBrush x:Key="VizBar"        Color="#FF2E86C4"/>
+    <!--
+    波形上的标记（循环入口）。用红是为了在饱和蓝的波形上**一眼能看见** ——
+    ⚠️ 别拿主题的 `Accent`（那是 #FF0E639C 深蓝，和 VizBar 撞色，试过，几乎看不见）。
+    -->
+    <SolidColorBrush x:Key="VizMark"       Color="#FFD4696B"/>
     <SolidColorBrush x:Key="VizLineL"      Color="#FF3A96DD"/>
 
     <!--
