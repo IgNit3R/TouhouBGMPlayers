@@ -347,9 +347,11 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <!-- 1:1（2026-09-24 改）：乐评栏太窄会把作者断的 ~30 字行二次折行；
-                         改前 3:2 时本窗口宽下每行只放得下约 24 个日文字。 -->
+                         改前 3:2 时本窗口宽下每行只放得下约 24 个日文字。
+                         ⚠️ **初始宽度必须是 0**：启动时什么都还没播、没有评论 ⇒ 波形应当**拉满整行**
+                         （与"无评论的曲目"同款）。有评论时由 RefreshComment 设回 1*（两处必须同步）。 -->
                     <ColumnDefinition Width="1*"/>
-                    <ColumnDefinition x:Name="CommentColumn" Width="1*"/>
+                    <ColumnDefinition x:Name="CommentColumn" Width="0"/>
                 </Grid.ColumnDefinitions>
 
                 <ui:WaveformPanel x:Name="Waveform" Grid.Column="0"/>

@@ -22,14 +22,10 @@ namespace ThbgmPlayer.UI;
 /// </summary>
 public sealed class WaveformPanel : FrameworkElement
 {
-    /// <summary>没有波形数据时显示的提示（还没扫出 / 扫描失败 / 没在放）。</summary>
-    private const string EmptyHint = "无波形";
-
     // 取色统一走 Theme.Get（与 VizStyle 同一条规矩：代码里不出现十六进制字面量）。
     // ⚠️ 必须在 Application 资源就位之后再取 —— 本面板由窗口 XAML 构造，
     // 那时 App.xaml 的主题已经合并好了，所以构造函数里取是安全的。
     private readonly Brush _track;
-    private readonly Brush _hint;
     private readonly Brush _wave;
     private readonly Brush _markBrush;
     private readonly Brush _headBrush;
@@ -59,7 +55,6 @@ public sealed class WaveformPanel : FrameworkElement
         // 中线：静音时给一个位置参照，否则空面板看不出"中间在哪"
         _midPen = FrozenPen(Theme.Get("Border", "#FF3F3F45"), 1);
 
-        _hint = Theme.Get("TextFaint", "#FF71717A");
         _wave = Theme.Get("VizBar", "#FF2E86C4");
 
         // ⚠️ 标记用 **VizMark（红）**，不是主题的 Accent ——
@@ -171,14 +166,12 @@ public sealed class WaveformPanel : FrameworkElement
         double mid = b.Height / 2;
         dc.DrawLine(_midPen, new Point(0, mid), new Point(b.Width, mid));
 
-        // ② 还没数据：居中一行暗字，不留纯黑块
+        // ② 还没数据：**什么都不画**（只留底槽与中线）。
+        // ⚠️ 曾经在这里居中显示「无波形」，2026-09-24 按用户要求去掉 ✗：那三个字在两种情况下都会出现 ——
+        // ① 未播放时；② 黄昏作部分作品**曲子已经在放、波形还在后台扫**的那几秒（会让人以为这首没波形）。
+        // 用户的要求是这两种情况都**不显示** ⇒ 面板保持空槽。
         var peaks = _peaks;
-        if (peaks is null || peaks.BucketCount == 0 || _view.Span <= 0)
-        {
-            var text = MakeText(EmptyHint);
-            dc.DrawText(text, new Point((b.Width - text.Width) / 2, (b.Height - text.Height) / 2));
-            return;
-        }
+        if (peaks is null || peaks.BucketCount == 0 || _view.Span <= 0) return;
 
         double w = b.Width;
         double h = b.Height;
@@ -257,16 +250,6 @@ public sealed class WaveformPanel : FrameworkElement
     /// 而红 #D4696B 与波形蓝 #2E86C4 各半混出来正是 (129,119,151)，和截图里的灰完全对得上。
     /// </summary>
     private static double SnapX(double x, double dpi) => (Math.Floor(x * dpi) + 0.5) / dpi;
-
-    /// <summary>居中提示用的一段文字（每次新建：FormattedText 带 DPI，跨尺寸复用会画歪）。</summary>
-    private FormattedText MakeText(string s) => new(
-        s,
-        System.Globalization.CultureInfo.CurrentCulture,
-        FlowDirection.LeftToRight,
-        new Typeface("Yu Gothic UI, Meiryo UI, Microsoft YaHei UI"),
-        12,
-        _hint,
-        VisualTreeHelper.GetDpi(this).PixelsPerDip);
 
     /// <summary>建一支冻结的画笔（冻结后渲染端能缓存，也才允许跨线程参与）。</summary>
     private static Pen FrozenPen(Brush brush, double thickness)
