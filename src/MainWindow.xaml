@@ -22,6 +22,54 @@
         -->
         <SolidColorBrush x:Key="GridLine"    Color="#FF2B2B2C"/>
         <SolidColorBrush x:Key="HeaderBg"    Color="#FF2A2A2C"/>
+        <SolidColorBrush x:Key="SelectionBg" Color="#FF4A4A52"/>
+
+        <!-- 乐评正文框（第 5 行右栏专用，显式键样式、不进主题：全项目仅此一处 TextBox）。
+             ⚠️ 主题里没有 TextBox 样式，默认模板在深色下是白底黑字，必须自写；
+             直角 = 不设 CornerRadius（默认模板本就无圆角）；底色参考可视化区域（BgDeep）。 -->
+        <Style x:Key="CommentBoxStyle" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <!-- 正文 47.8% 含换行（实测），多行显示是刚需 -->
+            <Setter Property="AcceptsReturn" Value="True"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="Background" Value="{StaticResource BgDeep}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{StaticResource Text}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource Text}"/>
+            <Setter Property="IsReadOnlyCaretVisible" Value="True"/>
+            <Setter Property="SelectionBrush" Value="{StaticResource SelectionBg}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="ContextMenu">
+                <Setter.Value>
+                    <!-- 只读 ⇒ 只有「复制」。观感会吃到应用级的深色隐式 ContextMenu 样式（曲目表同款）。 -->
+                    <ContextMenu>
+                        <MenuItem Header="复制" Command="Copy"/>
+                    </ContextMenu>
+                </Setter.Value>
+            </Setter>
+            <!-- 🔑 自写极简模板：默认模板的 focus VisualState 有系统高亮边框（用户实机反馈不要）。
+                 ⚠️ **不要给 PART_ContentHost 加 Margin="{TemplateBinding Padding}"** ——
+                 Padding 由 TextBoxBase 自己应用（默认模板里也不写 Padding），再加一次就是**双重内边距**，
+                 实机表现为"文本框边距被改了"（文字与滚动条都被往里挤）。
+                 直角 = 不设 CornerRadius；PART_ContentHost 是 TextBox 内容（含滚动条）的约定名。 -->
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Hidden"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -291,34 +339,29 @@
         </Border>
 
         <!-- ========== 波形 + 乐评 ==========
-             左：整轨静态波形（3） 右：乐评区（2，先做占位 + 素材状态提示）
+             左：整轨静态波形 右：乐评正文（只读 / 可选择复制 / 可滚动）—— **两栏各占一半（1:1）**
              ⚠️ 必须与 GridHost 平级，绝不能放进它内部（那是框选/排序坐标系）。
         -->
         <Border Grid.Row="5" Grid.ColumnSpan="3" Background="{StaticResource BgPanel}"
                 BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="10,8">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="3*"/>
-                    <ColumnDefinition Width="2*"/>
+                    <!-- 1:1（2026-09-24 改）：乐评栏太窄会把作者断的 ~30 字行二次折行；
+                         改前 3:2 时本窗口宽下每行只放得下约 24 个日文字。 -->
+                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition x:Name="CommentColumn" Width="1*"/>
                 </Grid.ColumnDefinitions>
 
                 <ui:WaveformPanel x:Name="Waveform" Grid.Column="0"/>
 
                 <!--
-                乐评区。内容那条支线未完工，这里先占位。
-                ⚠️ 两条已定契约（乐评支线给的）：① 这里**不显示曲名/标题**（标题已在曲目列表与
-                   曲目信息里出现过），将来只呈现正文；② 只读一个字段（署名行已并入 comment）。
+                乐评区（音乐室评论正文）。
+                ⚠️ 两条已定契约：① 不显示曲名/标题（曲目列表与正在播放行已有）；② 只读一个字段。
+                ⚠️ 没有正文（原作没写 / 未播放）时**整列收起**（CommentColumn 归 0 ⇒ 波形占满整行），
+                   按「隐藏该区域而非留白块」的已定口径 —— 切换归 RefreshComment。
                 -->
-                <Grid Grid.Column="1" Margin="10,0,0,0">
-                    <Rectangle x:Name="CommentFrame" Stroke="{StaticResource TextFaint}"
-                               StrokeThickness="1" StrokeDashArray="4 3" Opacity="0.55"
-                               RadiusX="2" RadiusY="2"/>
-                    <TextBlock x:Name="CommentStatus" Text="乐评区"
-                               Foreground="{StaticResource TextFaint}" FontSize="12"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                               TextAlignment="Center" TextWrapping="Wrap"
-                               IsHitTestVisible="False"/>
-                </Grid>
+                <TextBox x:Name="CommentBox" Grid.Column="1" Margin="10,0,0,0"
+                         Style="{StaticResource CommentBoxStyle}" Visibility="Collapsed"/>
             </Grid>
         </Border>
 

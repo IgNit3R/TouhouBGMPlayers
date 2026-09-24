@@ -54,7 +54,7 @@ cd src
 dotnet run -- --viz-selftest
 ```
 
-跑 **33 项**自检（退出码即结果，报告同时写到 exe 旁的 `viz-selftest.txt`）。
+跑 **39 项**自检（退出码即结果，报告同时写到 exe 旁的 `viz-selftest.txt`）。
 覆盖常量与缓冲形状、FFT/RMS/相关度、四个渲染器的离屏像素、余辉状态机、布局比例、
 每帧分配、淡出/归零语义、分接节点、节拍退订、延迟取窗、编码路由、放置判定、窗口缩放折算、
 设置往返、**封面素材是否齐全**（正向扫 29 个作品 id + 反向枚举程序集里实际打进去的那几张），
@@ -109,6 +109,7 @@ dotnet run -- --viz-selftest
 | `extract_game_names.py` | 从各游戏自带 おまけ.txt 提取正式作品名（对照用）                                |
 | `normalize_covers.py`   | 封面归一化：原图 → 长边 512 的 JPEG（**只缩不放**），输出到 `assets/cover/embed/`；需 **Pillow** |
 | `make_icon.py`          | PNG → 多尺寸 `bgmplayer.ico`                                  |
+| `make_musiccmt_resource.py` | 乐评 json → 内嵌资源 `musiccmt.json.gz`（含成对性校验）。⚠️ 乐评数据更新后重跑并提交 |
 
 数据流（构建期物化，权威源留存）：
 

@@ -64,6 +64,9 @@ internal static class VizSelfTest
         // 2026-09-23：主窗口新增的整轨波形（分桶 / 缩放 / 跟随 / 文件位置 / 标记 / 键 / 选源 / 取消）
         results.AddRange(UI.WaveformSelfTest.Run());
 
+        // 2026-09-24：音乐室评论索引（加载 / 查询 / 双语 / 空对）
+        results.AddRange(UI.CommentSelfTest.Run());
+
         int fail = results.Count(r => !r.Ok);
 
         var log = new StringBuilder();

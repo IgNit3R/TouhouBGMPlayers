@@ -235,8 +235,9 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 界面字体（中文 UI）套整个窗口；曲名字体（日文内容）只套三处：
-    /// 曲目表 + 正在播放的两行日文。参数行保持 Consolas 不动。
+    /// 界面字体（中文 UI）套整个窗口；曲名字体（日文内容）只套四处：
+    /// 曲目表 + 正在播放的两行日文 + 乐评正文（评论是日文内容，用户定「字体跟随设置」）。
+    /// 参数行保持 Consolas 不动。
     /// </summary>
     private void ApplyFont()
     {
@@ -244,6 +245,7 @@ public partial class MainWindow : Window
         Theme.ApplyContentFont(TrackGrid);
         Theme.ApplyContentFont(NowPlayingText);
         Theme.ApplyContentFont(NowPlayingGame);
+        Theme.ApplyContentFont(CommentBox);
     }
 
     // ---------- 列表 ----------
@@ -430,6 +432,9 @@ public partial class MainWindow : Window
                 NowPlayingDetail.Text = "—";
                 UpdateVizCover(null);      // 什么都没在放 → 封面退回占位
                 Waveform.SetTrack(null, false);   // 波形同理（别留着上一首的形状；无峰值时标记参数无意义）
+                CommentBox.Text = string.Empty;   // 乐评同理：整列收起，别留上一首正文
+                CommentBox.Visibility = Visibility.Collapsed;
+                CommentColumn.Width = new GridLength(0);
             }
             AltButton.IsEnabled = false;
             UpdateFavoriteButton();
@@ -473,6 +478,27 @@ public partial class MainWindow : Window
 
         UpdateVizCover(game.Id);           // 封面跟随**正在播放的那首曲子**
         RefreshWaveform(game, track);      // 波形同理：只跟播放走
+        RefreshComment(game.Id, track.No); // 乐评正文同理
+    }
+
+    // ---------- 乐评正文 ----------
+
+    /// <summary>
+    /// 换曲 / 切主副版时刷乐评区。
+    ///
+    /// ⚠️ 查不到正文（原作没写 / 没这部作品）与「未播放」走同一个动作：**右栏整列收起、波形占满整行**
+    /// —— 按「隐藏该区域而非留白块」的已定口径，不留虚线框。
+    /// 语言取 <see cref="CommentIndex.CurrentLanguage"/>（现在固定 Ja；将来由设置驱动，见 CommentIndex 的注释）。
+    /// ⚠️ 恢复时的列宽必须与 XAML 的静态值**一致（1*）** —— 两处不同步的话，
+    /// 切到第二首有评论的曲子时列宽会被代码改成 2*，两栏当场变形（波形只剩 1/3）✗。
+    /// </summary>
+    private void RefreshComment(string gameId, int trackNo)
+    {
+        bool has = CommentIndex.TryGetComment(gameId, trackNo, out var text);
+
+        CommentBox.Text = has ? text : string.Empty;
+        CommentBox.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        CommentColumn.Width = has ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
     }
 
     // ---------- 整轨波形 ----------
@@ -1287,6 +1313,7 @@ public partial class MainWindow : Window
         RefreshNowPlaying();
         UpdateVizCover(game.Id);      // 主副版切换 → 封面跟着换（th06nc 新典/原典就是这两张）
         RefreshWaveform(game, track); // 波形同理：主副版是两条不同的音频，缓存键也不同
+        RefreshComment(game.Id, track.No); // 乐评：查询键主副版相同，幂等零成本（为将来副版独立评论留挂点）
 
         // 切过去之后把「另一版本」预读上，来回 A/B 对比也是零等待
         PreloadCache.Preload(game, track, !_engine.UsingAlt);

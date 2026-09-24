@@ -12,7 +12,7 @@
 （曲目表被挤窄，分隔条可拖调宽窄）；数据来自播放引擎的**分接节点**（音量之后、16bit 转换之前）。
 
 - 入口：主窗口快速开关、设置页「可视化」页、设置菜单「可视化…」、`--viz`（隔离期诊断入口）
-- 自检：`dotnet run -- --viz-selftest`（**33 项**，退出码即结果；报告落 exe 旁 `viz-selftest.txt`）
+- 自检：`dotnet run -- --viz-selftest`（**39 项**，退出码即结果；报告落 exe 旁 `viz-selftest.txt`）
 - 代码：`src/Viz/` **6850 行**（含两个自检文件）
 - 素材：`assets/cover/embed/` **30 张封面（2.64 MB）**，固化进程序集（见 build-51）
 

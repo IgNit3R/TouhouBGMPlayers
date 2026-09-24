@@ -84,6 +84,11 @@
          缺这个资源不报错（TrackIndex 静默跳过），故加 Exists 条件。 -->
     <EmbeddedResource Include="Resources\tracks.nc.json.gz" LogicalName="tracks.nc.json.gz" Condition="Exists('Resources\tracks.nc.json.gz')" />
 
+    <!-- 音乐室评论索引。数据源：docs/musiccmt/musiccmt.json（乐评支线维护）
+         生成：tools/make_musiccmt_resource.py —— ⚠️ 数据更新后要重跑生成并提交。
+         缺这个资源不报错（CommentIndex 静默跳过），故加 Exists 条件。 -->
+    <EmbeddedResource Include="Resources\musiccmt.json.gz" LogicalName="musiccmt.json.gz" Condition="Exists('Resources\musiccmt.json.gz')" />
+
     <!-- TFPK v1（th145/th155）与 th175 cga 的条目真名不在容器里，需按 fileslist 哈希反查。
          内嵌社区名单（tools/135tk 同源），TfContainerSet 依次找：游戏目录 → 内嵌资源。 -->
     <EmbeddedResource Include="Resources\TfFileslist.txt" LogicalName="TfFileslist.txt" />
