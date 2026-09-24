@@ -29,7 +29,10 @@ public sealed class WaveformPanel : FrameworkElement
     private readonly Brush _wave;
     private readonly Brush _markBrush;
     private readonly Brush _headBrush;
-    private readonly Pen _midPen;
+    private readonly Brush _midBrush;
+    private readonly Brush _gridBrush;
+    private Pen _midPen;      // 笔可重建：见 RebuildPensIfNeeded
+    private Pen _gridPen;
 
     /// <summary>竖线的笔按 DPI 重建（见 <see cref="RebuildPensIfNeeded"/>）；这个记着上次用的 DPI。</summary>
     private double _penDpi = -1;
@@ -50,10 +53,18 @@ public sealed class WaveformPanel : FrameworkElement
     public WaveformPanel()
     {
         // 底槽：整块都要画到，才有命中区域（见类型注释）
-        _track = Theme.Get("BgElevated", "#FF2E2E31");
+        // ⚠️ 用 **BgDeep**（#171717）—— 与右侧乐评框同底色（用户 2026-09-24 定）；
+        // 原来用 BgElevated（#2E2E31）比乐评框亮一档，两块并排看得出边界。
+        _track = Theme.Get("BgDeep", "#FF171717");
 
         // 中线：静音时给一个位置参照，否则空面板看不出"中间在哪"
-        _midPen = FrozenPen(Theme.Get("Border", "#FF3F3F45"), 1);
+        // 它同时是网格的 **0 轴**：网格线很淡，中线要明显亮一档（Border 落在更暗的 BgDeep 上对比反而更强）
+        _midBrush = Theme.Get("Border", "#FF3F3F45");
+        _midPen = FrozenPen(_midBrush, 1);
+
+        // 网格线：**很淡**（与曲目表网格线同值 ⇒ 全 app 一套网格语言）
+        _gridBrush = Theme.Get("WaveGrid", "#FF2B2B2C");
+        _gridPen = FrozenPen(_gridBrush, 1);
 
         _wave = Theme.Get("VizBar", "#FF2E86C4");
 
@@ -163,21 +174,43 @@ public sealed class WaveformPanel : FrameworkElement
         // ① 底槽 —— 必须铺满：它同时是"可命中区域"
         dc.DrawRectangle(_track, null, b);
 
-        double mid = b.Height / 2;
-        dc.DrawLine(_midPen, new Point(0, mid), new Point(b.Width, mid));
+        double w = b.Width;
+        double h = b.Height;
+        double mid = h / 2;
+        double half = Math.Max(1, (h - 2) / 2);   // 上下各留 1px；面板很扁时至少给 1px 半高
 
-        // ② 还没数据：**什么都不画**（只留底槽与中线）。
+        // ② 背景网格（2026-09-24 加）：竖线 = **时间刻度**，横线 = **幅度刻度**。
+        //    插在波形**之下**（"背景一层网格"，被柱盖住属应有）；线色很淡（主题 WaveGrid）。
+        //    网格是**静态元素** ⇒ 吸附设备像素（1px 淡线落半像素会被劈成两行/两列，更糊 ✗）；
+        //    与"动的跟 vsync 且不吸附、不动的才吸附"这条铁律一致（播放头在上面，不吸附）。
+        //    ⚠️ 必须画在下面那个"无数据就 return"**之前** —— 未播放/波形还没扫出来时也要看得见刻度 ✓
+        //    （所以 mid/half/w/h 也都提到这里算）。
+        // 幅度档位：满量程 = sbyte 127（PCM16 高 8 位）⇒ 1/2、1/4 是"幅度每翻倍 +1"下仅有的整洁档
+        //（= −6.02 / −12.04 dBFS）。面板太矮时只画 ±1/2，否则两条挤在一起。
+        double[] levels = half >= 28 ? new[] { 0.5, 0.25, -0.25, -0.5 } : new[] { 0.5, -0.5 };
+        foreach (double f in levels)
+        {
+            double gy = SnapY(mid - f * half, dpi);
+            if (gy >= 0 && gy <= h) dc.DrawLine(_gridPen, new Point(0, gy), new Point(w, gy));
+        }
+
+        foreach (double t in WaveformMath.Ticks(_view, WaveformMath.TickStep(_view.Span, w)))
+        {
+            double gx = SnapX(XOf(t, w), dpi);
+            if (gx >= 0 && gx <= w) dc.DrawLine(_gridPen, new Point(gx, 0), new Point(gx, h));
+        }
+
+        // ③ 中线（0 轴）：**压在网格之上**，是背景里唯一明显的横线（网格很淡，不抢它）
+        dc.DrawLine(_midPen, new Point(0, mid), new Point(w, mid));
+
+        // ④ 还没数据：**什么都不画**（只留底槽 + 网格 + 中线）。
         // ⚠️ 曾经在这里居中显示「无波形」，2026-09-24 按用户要求去掉 ✗：那三个字在两种情况下都会出现 ——
         // ① 未播放时；② 黄昏作部分作品**曲子已经在放、波形还在后台扫**的那几秒（会让人以为这首没波形）。
         // 用户的要求是这两种情况都**不显示** ⇒ 面板保持空槽。
         var peaks = _peaks;
         if (peaks is null || peaks.BucketCount == 0 || _view.Span <= 0) return;
 
-        double w = b.Width;
-        double h = b.Height;
-
-        // ③ 波形柱：一个 x 像素一根，纵向是「这像素覆盖的桶」里 min..max 的极值
-        double half = Math.Max(1, (h - 2) / 2);   // 上下各留 1px；面板很扁时至少给 1px 半高
+        // ⑤ 波形柱：一个 x 像素一根，纵向是「这像素覆盖的桶」里 min..max 的极值
         int columns = (int)Math.Ceiling(w);
 
         for (int px = 0; px < columns; px++)
@@ -238,8 +271,13 @@ public sealed class WaveformPanel : FrameworkElement
         if (Math.Abs(dpi - _penDpi) < 1e-6) return;
 
         _penDpi = dpi;
+
+        // ⚠️ 中线与网格线**也必须**按 DPI 重建：它们同样是 1px 竖/横线，
+        // 若固定成 1 DIP，在 150% 缩放下会变成 1.5 设备像素 ⇒ 比其它线糊 ✗（原先中线就是这个毛病）。
         _markPen = FrozenPen(_markBrush, 1.0 / dpi);
         _headPen = FrozenPen(_headBrush, 1.0 / dpi);
+        _midPen = FrozenPen(_midBrush, 1.0 / dpi);
+        _gridPen = FrozenPen(_gridBrush, 1.0 / dpi);
     }
 
     /// <summary>
@@ -250,6 +288,9 @@ public sealed class WaveformPanel : FrameworkElement
     /// 而红 #D4696B 与波形蓝 #2E86C4 各半混出来正是 (129,119,151)，和截图里的灰完全对得上。
     /// </summary>
     private static double SnapX(double x, double dpi) => (Math.Floor(x * dpi) + 0.5) / dpi;
+
+    /// <summary>横线同理吸附到设备像素中心（否则 1px 淡横线会被劈成上下两行，看着更糊）。</summary>
+    private static double SnapY(double y, double dpi) => (Math.Floor(y * dpi) + 0.5) / dpi;
 
     /// <summary>建一支冻结的画笔（冻结后渲染端能缓存，也才允许跨线程参与）。</summary>
     private static Pen FrozenPen(Brush brush, double thickness)

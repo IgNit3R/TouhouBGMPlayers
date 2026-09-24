@@ -2,7 +2,7 @@
 
 > 状态：**已生效**（用户 2026-09-21 口述，同日确认起算点与多字母分支）。
 > 适用范围：`src/ThbgmPlayer.csproj` 的 `<Version>` 与 `<InformationalVersion>`，以及 `v*` 发布标签。
-> 最后更新：2026-09-21
+> 最后更新：2026-09-24（§6 第 4 条：构建改为助手可代跑）
 
 ---
 
@@ -103,6 +103,7 @@ u 20   v 21   w 22   x 23   y 24   z 25
 1. 核对形式是 `x.xx[HEX]`；**HEX 为多字母则先问第三段**。
 2. 改 `src/ThbgmPlayer.csproj` 的两行：`<Version>` 与 `<InformationalVersion>`。
 3. 若 README 有「当前版本」行（`README.md:6`），同步。
-4. 构建 / 提交 / 打 `v*` 标签由用户自行执行（助手不代跑 `dotnet build`）。
+4. **构建**：助手可**直接代跑**（2026-09-23 起的惯例，产物落 `bin/Debug` —— 用户就是从那儿跑程序的）。
+   ⚠️ **提交与打 `v*` 标签仍由用户自行执行**（对外动作，助手不碰）。
 5. 产物核对：`obj/<cfg>/net10.0-windows/ThbgmPlayer.AssemblyInfo.cs` 里两个特性应对上新值
    （Debug 与 Release 是两套 obj，改完只重建一个配置时另一个仍是旧值，属正常）。

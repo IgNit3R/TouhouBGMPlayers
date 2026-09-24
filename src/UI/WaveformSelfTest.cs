@@ -27,8 +27,132 @@ internal static class WaveformSelfTest
         CheckCancel(),
         CheckRender(),
         CheckPanelZoom(),
+        CheckTickStep(),
+        CheckGridRender(),
         CheckRealFile(),
     };
+
+    // ---------------------------------------------------------------- 背景网格（时间 / 幅度刻度）
+
+    /// <summary>
+    /// 网格刻度（纯算术）：间隔必须是 (1,2,5)×10^k、像素间距不小于目标值、随跨度单调不回退；
+    /// 刻度必须落在**绝对时刻**的整数倍上、落在区间内、递增。
+    /// </summary>
+    private static VizSelfTest.Result CheckTickStep()
+    {
+        const string Title = "波形网格刻度（间隔序列 / 像素间距 / 绝对时刻）";
+
+        try
+        {
+            var bad = new List<string>();
+
+            foreach (double span in new[] { 5.0, 30.0, 100.0, 600.0, 3600.0 })
+            {
+                foreach (double width in new[] { 40.0, 200.0, 400.0, 1200.0 })
+                {
+                    double step = WaveformMath.TickStep(span, width);
+                    if (step <= 0) { bad.Add($"step<=0 span={span} width={width}"); continue; }
+
+                    double px = step / span * width;
+                    if (px < 80 - 1e-6) bad.Add($"间距不足 {px:0.0}px (span={span} width={width})");
+
+                    double m = step / Math.Pow(10, Math.Floor(Math.Log10(step)));
+                    if (Math.Abs(m - 1) > 1e-9 && Math.Abs(m - 2) > 1e-9 && Math.Abs(m - 5) > 1e-9)
+                        bad.Add($"间隔不在 (1,2,5)×10^k 内：{step}");
+
+                    var view = new ViewRange(0, span);
+                    var ticks = WaveformMath.Ticks(view, step);
+                    if (ticks.Count < 1 || ticks.Count > 30) bad.Add($"刻度数异常 {ticks.Count} (span={span})");
+
+                    for (int i = 0; i < ticks.Count; i++)
+                    {
+                        double q = ticks[i] / step;
+                        if (Math.Abs(q - Math.Round(q)) > 1e-9) bad.Add($"刻度非间隔整数倍 {ticks[i]}");
+                        if (ticks[i] < view.Start - 1e-9 || ticks[i] > view.End + 1e-6) bad.Add($"刻度越界 {ticks[i]}");
+                        if (i > 0 && ticks[i] <= ticks[i - 1]) bad.Add("刻度未递增");
+                    }
+                }
+            }
+
+            double prev = 0;
+            foreach (double span in new[] { 5.0, 10.0, 30.0, 60.0, 120.0, 600.0 })
+            {
+                double step = WaveformMath.TickStep(span, 400);
+                if (step < prev - 1e-9) bad.Add($"间隔随跨度回退 span={span}");
+                prev = step;
+            }
+
+            bool ok = bad.Count == 0;
+
+            return new VizSelfTest.Result(Title, ok,
+                ok ? "5 档跨度 × 4 档宽度全过：间隔 ∈ (1,2,5)×10^k、像素间距 ≥ 80、刻度落在绝对时刻整数倍且递增"
+                   : string.Join("；", bad.Take(4)));
+        }
+        catch (Exception ex)
+        {
+            return new VizSelfTest.Result(Title, false, ex.GetType().Name + "：" + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 网格真的画出来了 —— 全用**相对比较**（自检时主题可能未合并，绝对颜色不可依赖）：
+    /// ① 竖线那一列比同行空白亮；② ±1/2 横线比它下方空白亮；③ 背景 &lt; 网格 &lt; 波形。
+    ///
+    /// 取样位置的来历：W=400、span=100 ⇒ `TickStep` 取 20s ⇒ 刻度在 0/20/40/60/80/100 ⇒ x=0/80/160/240/320/400；
+    /// `half=(96-2)/2=47` ⇒ ±1/2 在 y≈24.5（覆盖 24、25 两行）。
+    /// 竖线取 y=12（波形最高只到 mid±15，那里不可能是柱）；静音峰时柱只在 y=48 一行。
+    /// </summary>
+    private static VizSelfTest.Result CheckGridRender()
+    {
+        const string Title = "波形网格渲染（竖线/横线可见，且暗于波形）";
+
+        try
+        {
+            const int W = 400, H = 96;
+            const double Total = 100;
+            double spb = WaveformPeaks.FramesPerBucket / 44100.0;
+
+            // 全静音峰 ⇒ 不画柱，画面只剩 底色 + 网格 + 中线
+            int buckets = Math.Max(1, (int)(Total / spb));
+            var zero = new WaveformPeaks(new sbyte[buckets], new sbyte[buckets], Total, spb, 0);
+
+            var panel = new WaveformPanel();
+            panel.SetTrack(zero, isTfOneShot: false);
+            var px = Render(panel, W, H);
+
+            long vGrid = PixelBrightness(px, W, 160, 12);   // 40s 处的竖线
+            long vBg = PixelBrightness(px, W, 180, 12);     // 两根竖线之间
+            bool vertical = vGrid > vBg;
+
+            long hGrid = Math.Max(PixelBrightness(px, W, 180, 24), PixelBrightness(px, W, 180, 25));
+            long hBg = PixelBrightness(px, W, 180, 30);     // ±1/2 与 ±1/4 之间
+            bool horizontal = hGrid > hBg;
+
+            // 波形比网格亮：换 ±40 的峰，取中线那一行
+            var panel2 = new WaveformPanel();
+            panel2.SetTrack(FlatPeaks(Total, spb, 0), isTfOneShot: false);
+            var px2 = Render(panel2, W, H);
+            long wave = PixelBrightness(px2, W, 200, H / 2);
+            bool order = vBg < vGrid && vGrid < wave;
+
+            bool ok = vertical && horizontal && order;
+
+            return new VizSelfTest.Result(Title, ok,
+                $"竖线 {vGrid} > 空白 {vBg} = {vertical}；横线 {hGrid} > 空白 {hBg} = {horizontal}；" +
+                $"背景 {vBg} < 网格 {vGrid} < 波形 {wave} = {order}");
+        }
+        catch (Exception ex)
+        {
+            return new VizSelfTest.Result(Title, false, ex.GetType().Name + "：" + ex.Message);
+        }
+    }
+
+    /// <summary>单像素亮度（Pbgra32：B+G+R）。</summary>
+    private static long PixelBrightness(byte[] px, int w, int x, int y)
+    {
+        int i = (y * w + x) * 4;
+        return px[i] + px[i + 1] + px[i + 2];
+    }
 
     // ---------------------------------------------------------------- 分桶
 

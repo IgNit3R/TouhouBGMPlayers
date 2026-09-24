@@ -36,6 +36,9 @@
     <SolidColorBrush x:Key="Text"          Color="#FFEDEDED"/>
     <SolidColorBrush x:Key="TextDim"       Color="#FFADADB4"/>
     <SolidColorBrush x:Key="TextFaint"     Color="#FF71717A"/>
+    <!-- 波形背景网格（很淡）。与曲目表的窗口级 GridLine #2B2B2C 同值 ⇒ 全 app 一套网格语言。
+         用在 BgDeep(#171717) 上，只高 0x14/通道：看得见但不抢波形与中线。 -->
+    <SolidColorBrush x:Key="WaveGrid"      Color="#FF2B2B2C"/>
 
     <!-- ================= 强调（全局唯一的一个彩色） ================= -->
     <SolidColorBrush x:Key="Accent"        Color="#FF0E639C"/>
@@ -910,5 +913,4 @@
             </Trigger>
         </Style.Triggers>
     </Style>
-
 </ResourceDictionary>

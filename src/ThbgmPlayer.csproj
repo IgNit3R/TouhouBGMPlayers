@@ -21,8 +21,8 @@
 
     <!-- 程序集/文件版本必须是纯数字；给人看的版本号走 InformationalVersion（可带字母）。
          「关于」对话框读的就是 InformationalVersion。 -->
-    <Version>1.7.0</Version>
-    <InformationalVersion>1.7a</InformationalVersion>
+    <Version>1.7.1</Version>
+    <InformationalVersion>1.7b</InformationalVersion>
     <!-- SDK 默认会把 git 提交哈希追加到 InformationalVersion 后面（Source Revision ID，
          溯源用）。播放器版本号是给人看的，那串哈希纯属噪音，关掉。 -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>

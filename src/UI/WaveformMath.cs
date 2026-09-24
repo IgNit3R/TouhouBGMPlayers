@@ -135,4 +135,39 @@ public static class WaveformMath
     /// </summary>
     public static bool ShouldShowLoopMark(bool isTfOneShot, double introSeconds, double totalSeconds) =>
         !isTfOneShot && introSeconds > 0 && introSeconds < totalSeconds;
+
+    /// <summary>
+    /// 时间刻度的**间隔**：取 (1,2,5)×10^k 里第一个"像素间距不小于 targetPx"的档。
+    /// 从候选序列**向上取整** ⇒ 间距天然 ≥ targetPx ✓（宁可疏一点，也不要挤成一团）。
+    /// 纯算术、只吃数值 ⇒ 可离屏自检。
+    /// </summary>
+    public static double TickStep(double span, double width, double targetPx = 80)
+    {
+        if (span <= 0 || width <= 1 || targetPx <= 0) return 0;
+
+        double desired = span * targetPx / width;
+        double mag = Math.Pow(10, Math.Floor(Math.Log10(desired)));
+
+        foreach (double m in new[] { 1.0, 2.0, 5.0 })
+            if (m * mag >= desired) return m * mag;
+
+        return 10 * mag;
+    }
+
+    /// <summary>
+    /// 时间刻度（**绝对时刻**，文件 0 起；即 0:30 / 1:00 这类整点）。
+    /// ⚠️ 锚在绝对时间、不是"视图内按比例" —— 播放中视图每帧跟随滚动，
+    /// 若按视图锚定，刻度会跟着**逐帧爬动** ✗。
+    /// </summary>
+    public static List<double> Ticks(ViewRange view, double step, int maxCount = 200)
+    {
+        var list = new List<double>();
+        if (step <= 0 || view.Span <= 0) return list;
+
+        double t = Math.Ceiling(view.Start / step) * step;
+        for (int i = 0; i < maxCount && t <= view.End; i++, t += step)
+            list.Add(t);
+
+        return list;
+    }
 }
