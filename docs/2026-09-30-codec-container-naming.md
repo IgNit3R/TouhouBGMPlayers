@@ -153,64 +153,73 @@ if (bytes[0..4] == "TFWA")  throw new NotSupportedException(...);  // 明确拒�
 - `ResolveDatPath`（zwav）→ 裸流
 - `IsNcSource`（TH06NC）→ 自定义 Opus 容器
 
-### 4.3 UI 现状
+### 4.3 UI 现状（2026-09-30 已落地容器/码率显示，见 §5）
 
-「当前曲目信息」面板 = `src/MainWindow.xaml:370-384`（根 Grid **第 6 行**，`Height="Auto"`），文本由 `NowPlayingDetail` 承载，串在：
+「当前曲目信息」面板 = `src/MainWindow.xaml:370-385`（根 Grid **第 6 行**，`Height="Auto"`），文本由 `NowPlayingDetail` 承载。**旧版** `Describe()`（只有 r/c/b + intro/loop/总长）已被 `SetDetail` 状态机取代，现行格式：
 
-```csharp
-// src/MainWindow.xaml.cs:1327-1330
-private static string Describe(TrackDef track) =>
-    $"{track.Rate}Hz / {track.Channels}ch / {track.Bits}bit · " +
-    $"intro {TrackRow.FormatTime(track.IntroTime)} · loop {TrackRow.FormatTime(track.LoopTime)} · " +
-    $"总长 {TrackRow.FormatTime(track.LengthTime)}";
+```
+<容器名> / <bps> / <采样率>Hz / <深度>bit / <通道> / <单轨时长>
+Vorbis Ogg / 12-251 kbps VBR / 44100Hz / 16bit / 2ch stereo / 02:14
 ```
 
-**目前只有 r/c/b + 时间线，没有任何容器/编码信息。**
+（拼装函数 `UI/TrackInfoText.Format`；四类容器真实示例见 §5.3。）
 
 ---
 
-## 5. 落地改动点清单（供之后动工时用）
+## 5. 落地实现（2026-09-30 已动工，方案与实况）
 
-> 仅列改动点与陷阱，不含实现。用户口味的红线：**方案定稿 ≠ 可以开工**，等明确动工指令再碰代码。
+> 用户拍板的口径（2026-09-30）：Ogg 码率显示 **min~max 真实极值**；**选中即显示**（后台只读探针，
+> 不解码）；容器名**从 `GameDef.Source` 纯函数映射**；时长只留总长；bps 取整；`NowPlayingDetail`
+> 加 `TextTrimming` 兜底。方案文件：`C:\Users\Mika\.workbuddy\plans\electric-vortex-lovelace-PzoxwpJK.md`。
+>
+> ⚠️ 早期版本的 §5 写的是"给 `IAudioSource` 加属性 + 四个源各填一次"，**已废弃** —— 那条路要动
+> 接口与四个音源，与用户"其他都不用动"的要求相悖；且 `PcmFileSource` 被 zwav/wav 共用
+> （§4.2），短码没法写死在源里。现行方案**一个音源都不碰**。
 
-### 5.1 数据侧：给 `IAudioSource` 加一个只读属性
+### 5.1 总体结构：音源层零改动，显示自成一条探针链
 
-`src/Audio/IAudioSource.cs` 是四个源的共同接口，加一个（例如 `string FormatShort`，取 §3.1 的短码）最省事 —— 上层拿到源就能读，不需要额外传参。
+| 新文件 | 职责 |
+|---|---|
+| `src/Audio/BitrateStats.cs` | 纯数据类：min/p05/p25/p50/p75/p95/max/avg/pages/IsVbr。**一次算全量** —— UI 现在只用 min~max，将来改 p05~p95 稳定带是"换个字段读"，不是"重新探一遍" |
+| `src/Audio/VorbisPages.cs` | **纯算术**：逐 Ogg 页瞬时 bps（页字节×8÷(页样本÷采样率)），无 IO 无解码 ⇒ 可离屏自检。移植自 `.workbuddy/tools/vorbis_page_bps_probe.py`，含线性插值分位 |
+| `src/Audio/BitrateProbe.cs` | IO 入口：`Instant()`（PCM=Rate×ch×bit、Opus=192k 常数，零 IO）+ `Async()`（tfogg 独立开 `TfContainerSet` 只读条目、**不解码**）。结构照 `TrackScanner`：后台、失败静默、绝不碰 `PreloadCache` |
+| `src/UI/TrackInfoCache.cs` | 纯内存 LRU（镜像 `WaveformCache`）：键复用 `PreloadCache.KeyOf`，容量 64，只缓存 Vorbis 探针结果，路径一改整表清 |
+| `src/UI/TrackInfoText.cs` | **纯函数**：容器名映射（§3.1）+ 拼串 + kbps 取整（AwayFromZero）+ mono/stereo 判定 |
+| `src/UI/BitrateSelfTest.cs` | 自检（注册在 `VizSelfTest`）：合成 Ogg 手算断言、5 条串逐字比对、真文件抽查 |
 
-### 5.2 四个源各填一次
+`MainWindow` 侧：`Describe` → `SetDetail(game, track, useAlt, withPrefix)`（三处调用：选中未播 /
+播放 / 切副版），代际号 `_detailGen` + 取消令牌 `_detailCts` 照波形那套；`ApplySettingsSideEffects`
+与 reset 分支都会作废在途探针。**顺带修掉** `Alt_Click` 只重加前缀不重算内容的既有瑕疵（TH13
+主 1411k@44100 / 霊界 706k@22050，切版后码率采样率都会跟着变）。
 
-| 源 | 短码 | 备注 |
-|---|---|---|
-| `OggMemorySource` | `vorbis_ogg` | 可写死 |
-| `WavEntrySource` | `pcm_wav` | 可写死 |
-| `OpusMemorySource` | `opus_custom` | 可写死 |
-| `PcmFileSource` | **`pcm_raw` 或 `pcm_wav`（不定）** | ⚠️ 见 5.3 |
-| `VizDebugFeed`（调试源） | 任意 | 不在播放链，可不填/填 `unknown` |
+### 5.2 关键取舍
 
-### 5.3 ⚠️ 最大的坑：`PcmFileSource` 被两条路共用
+- **容器名从 `Source` 映射，不用魔数现判**：纯函数、零 IO、选中即得。代价是显示与实际解码
+  不再同一事实来源 —— 但 §4.2 的魔数路由是播放侧权威，若未来 `tfogg` 混进非 Ogg 条目，
+  表现是"拒绝播放"而不是"播错"，风险可接受（当时 196/196 全为 OggS，三方印证）。
+- **独立探针而非"顺路发布"**：曾评估在 `OggMemorySource` 构造里算完发布到静态表（零额外容器开），
+  但要把 game/track 传进音源构造签名 ⇒ 连带改 `AudioSourceFactory` 与音源，违背"不改四个音源"，
+  且缓存生命周期与播放耦合。代价是 tfogg 每次未缓存命中都要重开一次 `TfContainerSet`
+  （无缓存、重解目录表）—— 后台线程、毫秒级、结果进 LRU，同曲不反复探。
+- **占位符 `… kbps`**：tfogg 首探未归时其余字段照常显示，探针回来整串重拼，不闪空。
 
-`AudioSourceFactory.cs:28-36`：`zwav` 与 `wav` **都构造 `PcmFileSource`**，只是路径拼法不同：
+### 5.3 四类容器的真实显示串（实测数字）
 
-```csharp
-string path = game.IsWavSource ? ResolveWavPath(...) : ResolveDatPath(...);
-...
-return new PcmFileSource(path, track.Start, ...);
-```
+| 容器 | 显示串 |
+|---|---|
+| `PCM Raw`（th07 等 20 作） | `PCM Raw / 1411 kbps / 44100Hz / 16bit / 2ch stereo / 01:33` |
+| `PCM RIFF/WAVE`（th06 / th075） | `PCM RIFF/WAVE / 1411 kbps / 44100Hz / 16bit / 2ch stereo / 02:10` |
+| `Vorbis Ogg`（tf 6 作） | `Vorbis Ogg / 12-251 kbps VBR / 44100Hz / 16bit / 2ch stereo / 02:14` |
+| `Opus (custom container)`（th06nc） | `Opus (custom container) / 192 kbps / 48000Hz / 16bit / 2ch stereo / 02:00` |
+| TH13 霊界版（副版前缀照旧） | `霊界版 · PCM Raw / 706 kbps / 22050Hz / 16bit / 2ch stereo / 01:30` |
 
-⇒ **不能把短码写死在 `PcmFileSource` 里**，否则 TH06（应为 `pcm_wav`）和 TH07+（应为 `pcm_raw`）会被标成同一个。要由 `Create` 侧传入（构造函数加参数），或者干脆在 `Create` 里判完再赋。
+### 5.4 验证记录（2026-09-30）
 
-### 5.4 让魔数判定的结果往上带
-
-`CreateTf` 里那次判定（§4.2）是**权威**的，应该把结果抛给 `IAudioSource` 的构造过程，而不是让显示层另用 `Source` 猜。理由：
-
-- 一次覆盖 `tfsuica` + `tfogg`
-- **保证"显示什么"和"实际怎么解"用的是同一个事实来源**。否则一旦某天 `tfogg` 里混进非 Ogg 条目，路由会拒绝播放、而显示层还在说 `Vorbis Ogg`
-
-### 5.5 UI 侧
-
-1. `Describe()` 拼串处加一项（放在 r/c/b 之后、时间线之前较自然）。
-2. ⚠️ **拆串**：`docs/2026-09-21-project-notes.md:79` 已列明「`Describe()` 技术串要拆」——因为它是给**界面语言**用的，而曲名/乐评走**内容语言**。新增项不要继续往同一个串里堆。
-3. 加 `unknown` 兜底，见 §6。
+- `dotnet build` 0 警告 0 错误；`--viz-selftest` **48 项全绿**（新增 7 项）。
+- **C# 探针 vs Python 参考实现在真数据上 6/6 吻合**（每部 tfogg 抽第一首，min/max 精确到
+  取整、页数逐一相同）：th105 `op.ogg` 100-271/698 页、th123 `op2.ogg` 151-292/595、
+  th135 `reimu1.ogg` 77-248/668、th145 与 th155 `reimu1` 同为 136-264/832（md5 复用曲）、
+  th175 `op.ogg` 144-263/501。对照表：`.workbuddy/vorbis_page_bps_196.csv`。
 
 ---
 
@@ -219,10 +228,10 @@ return new PcmFileSource(path, track.Start, ...);
 | # | 项 | 说明 |
 |---|---|---|
 | 1 | **别做封闭枚举** | 至少要留 `unknown`：(a) `TFWA` 条目会被拒播（`AudioSourceFactory.cs:60-62`），诊断路径可能遇到；(b) 官方专辑线规划过 `wav / flac / tta / mp3`（`docs/2026-09-21-project-notes.md:33-48`），将来会多出 `Opus` 之外的编码 |
-| 2 | **本地化归属待定** | `PCM` / `Ogg` / `Opus` 这类格式术语属**界面语言**（且通常不翻译），但仍需按 §5.5 第 2 条拆出去，不能硬编码在拼串里 |
+| 2 | **本地化归属待定** | `PCM` / `Ogg` / `Opus` 这类格式术语属**界面语言**（且通常不翻译）。拼串现已集中在 `UI/TrackInfoText`，多语言支线（`docs/2026-09-21-project-notes.md:79` 的拆串待办）落地时从这里拆，不再散落 |
 | 3 | **`thbgm.fmt` 只解了部分字段** | 构建期 `tools/gen_tracklist_v2.py:115` 其实解出了 7 个字段，但只有 `ch/rate/bits` 进了索引，`nAvgBytesPerSec` / `nBlockAlign` / `wFormatTag` / `cbSize` **全被丢弃** —— 如果之后想显示比特率，PCM 这一半的数据在**生成期**就已经能拿到了 |
-| 4 | **比特率：代码里没做，但数据都能拿到** | 全文搜索 `bitrate / 码率` **零命中**（从未实现）。但三种编码的码率**都可免费获取**，实测值见 **§7**。唯一需要拍板的是 **UI 显示哪个口径** —— 见 §7.6 |
-| 5 | **文档索引未更新** | 本篇尚未登记进 `docs/README.md` §2（该文件属既有文件，按项目红线未改写）；需要时再单独确认 |
+| 4 | **比特率已落地（2026-09-30，§5）** | PCM/Opus 走格式常数，Vorbis 走页级 min~max 探针（后台只读、不解码）；口径 = **压缩存储码率**（§7.6 拍板） |
+| 5 | **文档索引已登记** | 2026-09-30 已登记进 `docs/README.md` §2 |
 
 ---
 

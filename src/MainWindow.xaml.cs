@@ -109,6 +109,15 @@ public partial class MainWindow : Window
     private bool _ready;
 
     private string _nowDetail = ""; // 曲目信息原文（灵界版状态前缀另加，避免反复叠加）
+
+    /// <summary>在途的码率探针（换曲要取消它）。照 _waveCts 那套。</summary>
+    private CancellationTokenSource? _detailCts;
+
+    /// <summary>代数：探针回调回来时比对，不是最新一代就丢弃。照 _waveGen 那套。</summary>
+    private long _detailGen;
+
+    /// <summary>本轮详情要不要带副版前缀（探针异步回来时按它决定拼法，见 SetDetailText）。</summary>
+    private bool _detailWithPrefix;
     private readonly Random _rng = new();
     private MediaKeysHotkey? _mediaKeys;   // 全局多媒体键；句柄可用后才创建
     private DispatcherTimer? _selPreloadTimer;   // ③ 选中即预读的防抖
@@ -428,6 +437,10 @@ public partial class MainWindow : Window
         {
             if (_engine?.Current is null)
             {
+                // 在途的码率探针作废：别让它回来把占位「—」覆盖掉
+                _detailGen++;
+                _detailCts?.Cancel();
+                _detailCts = null;
                 NowPlayingText.Text = "未播放";
                 NowPlayingDetail.Text = "—";
                 UpdateVizCover(null);      // 什么都没在放 → 封面退回占位
@@ -451,9 +464,8 @@ public partial class MainWindow : Window
         {
             NowPlayingText.Text = row.DisplayText;
             NowPlayingGame.Text = game.Name;
-            _nowDetail = Describe(track);
-            // 选中的不是正在播的那首，所以不带副版前缀
-            NowPlayingDetail.Text = _nowDetail;
+            // 选中的不是正在播的那首：按主版字段拼、不带副版前缀（旧语义）
+            SetDetail(game, track, useAlt: false, withPrefix: false);
         }
         else
         {
@@ -477,8 +489,7 @@ public partial class MainWindow : Window
     {
         NowPlayingText.Text = $"{game.ShortName} - {track.No:00} - {track.Title}";
         NowPlayingGame.Text = game.Name;   // 全名（含副标题），主标题那行已经用过 ShortName
-        _nowDetail = Describe(track);
-        RefreshNowPlaying();
+        SetDetail(game, track, _engine?.UsingAlt == true, withPrefix: true);
 
         UpdateVizCover(game.Id);           // 封面跟随**正在播放的那首曲子**
         RefreshWaveform(game, track);      // 波形同理：只跟播放走
@@ -1314,7 +1325,9 @@ public partial class MainWindow : Window
 
         // 曲名保持主版不变（用户定：列表与面板都不跳字），只在按钮和详情前缀上体现状态
         RefreshVariantControls();
-        RefreshNowPlaying();
+        // 详情要整串重拼：主副版的码率 / 采样率 / 时长都不同（TH13 主 1411k@44100、霊界 706k@22050）。
+        // 旧实现只重加前缀不重算内容，切版后时长一直显示主版值 —— 这次一并修掉。
+        SetDetail(game, track, _engine.UsingAlt, withPrefix: true);
         UpdateVizCover(game.Id);      // 主副版切换 → 封面跟着换（th06nc 新典/原典就是这两张）
         RefreshWaveform(game, track); // 波形同理：主副版是两条不同的音频，缓存键也不同
         RefreshComment(game.Id, track.No); // 乐评：查询键主副版相同，幂等零成本（为将来副版独立评论留挂点）
@@ -1323,11 +1336,63 @@ public partial class MainWindow : Window
         PreloadCache.Preload(game, track, !_engine.UsingAlt);
     }
 
-    /// <summary>曲目信息的原文（不含灵界版前缀）。</summary>
-    private static string Describe(TrackDef track) =>
-        $"{track.Rate}Hz / {track.Channels}ch / {track.Bits}bit · " +
-        $"intro {TrackRow.FormatTime(track.IntroTime)} · loop {TrackRow.FormatTime(track.LoopTime)} · " +
-        $"总长 {TrackRow.FormatTime(track.LengthTime)}";
+    // ---------- 当前曲目信息（容器 / 码率 / 参数；ogg 的码率范围是异步探的） ----------
+
+    /// <summary>
+    /// 摆「当前曲目信息」：先出即时部分（容器名 / 采样率 / 深度 / 通道 / 时长，以及 PCM、
+    /// Opus 的码率常数），tfogg 的码率范围由后台只读探针（不解码）回来再补一版整串。
+    /// 代际号 + 取消令牌照波形那套：快速连切只认最新一代，旧探针的回调直接丢弃。
+    /// </summary>
+    private void SetDetail(GameDef game, TrackDef track, bool useAlt, bool withPrefix)
+    {
+        _detailWithPrefix = withPrefix;
+        long gen = ++_detailGen;
+        _detailCts?.Cancel();
+        _detailCts = null;
+
+        // PCM / Opus 是格式常数（零 IO），tfogg 先查缓存，都没有才需要后台探
+        var stats = TrackInfoCache.Get(game, track, useAlt)
+                  ?? BitrateProbe.Instant(game, track, useAlt);
+        SetDetailText(game, track, useAlt, stats, withPrefix);
+
+        if (stats is not null) return;   // 已就绪 ⇒ 不起后台任务
+
+        var cts = new CancellationTokenSource();
+        _detailCts = cts;
+        _ = ProbeDetailAsync(game, track, useAlt, cts.Token, gen);
+    }
+
+    /// <summary>
+    /// 把 stats（可能为 null = tfogg 未就绪）拼成串摆上面板。
+    /// withPrefix 只有播放 / 切副版路径传 true；「选中未播」不带前缀（旧语义）。
+    /// </summary>
+    private void SetDetailText(GameDef game, TrackDef track, bool useAlt,
+                               BitrateStats? stats, bool withPrefix)
+    {
+        _nowDetail = TrackInfoText.Format(game, track, useAlt, stats);
+        if (withPrefix) RefreshNowPlaying();       // 前缀按当前副版状态现算（不会叠加）
+        else NowPlayingDetail.Text = _nowDetail;
+    }
+
+    /// <summary>tfogg 码率探针回调：失败 / 取消 / 换代就丢弃；成功则入缓存并补一版面板。</summary>
+    private async Task ProbeDetailAsync(GameDef game, TrackDef track, bool useAlt,
+                                        CancellationToken ct, long gen)
+    {
+        BitrateStats? stats;
+        try
+        {
+            stats = await BitrateProbe.Async(game, track, useAlt, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;   // 取消（令牌在任务开跑前就触发时会走到这），静默收场
+        }
+
+        if (stats is null || gen != _detailGen) return;
+
+        TrackInfoCache.Put(game, track, useAlt, stats);
+        SetDetailText(game, track, useAlt, stats, _detailWithPrefix);
+    }
 
     /// <summary>按当前灵界版状态重拼曲目信息。前缀是算出来的，不会叠加。</summary>
     /// <summary>
@@ -1552,6 +1617,12 @@ public partial class MainWindow : Window
     {
         PreloadCache.Clear();   // 路径可能改了，缓存里的音源指向旧文件，必须丢
         WaveformCache.Clear();  // 同理：旧峰值按旧文件扫的，留着会画出一个不该存在的波形
+        TrackInfoCache.Clear(); // 同理：旧码率统计按旧文件的容器探的
+
+        // 在途的码率探针也要作废（它读的是旧路径的容器）
+        _detailGen++;
+        _detailCts?.Cancel();
+        _detailCts = null;
 
         // 路径可能变了，重建下拉（连收藏与自定义列表一起）
         RebuildPlaylistsKeepSelection();

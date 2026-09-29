@@ -378,9 +378,11 @@
                            FontSize="11" Margin="0,3,0,0"
                            Foreground="{StaticResource TextFaint}"
                            TextTrimming="CharacterEllipsis"/>
+                <!-- 参数串：编码容器 / 码率 / 采样率 / 深度 / 通道 / 时长。超长从尾部省略（当前串长实测有 240px 余量，纯兜底） -->
                 <TextBlock x:Name="NowPlayingDetail" Text="—"
                            Foreground="{StaticResource TextDim}" Margin="0,3,0,0"
-                           FontFamily="Consolas"/>
+                           FontFamily="Consolas"
+                           TextTrimming="CharacterEllipsis"/>
             </StackPanel>
         </Border>
     </Grid>

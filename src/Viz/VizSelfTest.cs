@@ -67,6 +67,9 @@ internal static class VizSelfTest
         // 2026-09-24：音乐室评论索引（加载 / 查询 / 双语 / 空对）
         results.AddRange(UI.CommentSelfTest.Run());
 
+        // 2026-09-30：码率探针与「当前曲目信息」参数串（页算术 / 拼串 / 真文件抽查）
+        results.AddRange(UI.BitrateSelfTest.Run());
+
         int fail = results.Count(r => !r.Ok);
 
         var log = new StringBuilder();
