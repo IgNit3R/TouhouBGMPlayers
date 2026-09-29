@@ -436,7 +436,8 @@ public partial class MainWindow : Window
                 CommentBox.Visibility = Visibility.Collapsed;
                 CommentColumn.Width = new GridLength(0);
             }
-            AltButton.IsEnabled = false;
+            // 可点性跟播放走、不跟选中走：清空选中不该误伤正在播的 TH13 副版曲目
+            RefreshVariantControls();
             UpdateFavoriteButton();
             return;
         }
@@ -459,8 +460,11 @@ public partial class MainWindow : Window
             ShowPlayingPanel(game, track);
         }
 
-        // 灵界版按钮：仅当前正在播的这首有灵界版时可用
-        AltButton.IsEnabled = track.HasAlt && row.IsAvailable && _engine?.Current == row.Ref;
+        // 灵界版按钮的可点性**只由 UpdateAltButton 裁决**（可点性跟正在播放的曲目走）。
+        // 这里不能自己按「选中行」刷 —— 随机连播换曲时 PlayTrack 会先 Play 再改选中行，
+        // 这行旧逻辑只看 HasAlt 不看 HasVariantLabels，会把新典曲目的霊界版按钮错误点亮
+        // （按下能切到原典、随后被 RefreshVariantControls 灰掉）。统一走一套判定。
+        RefreshVariantControls();
 
         UpdateFavoriteButton();
     }
