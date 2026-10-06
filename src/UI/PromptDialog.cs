@@ -13,12 +13,12 @@ public static class PromptDialog
     /// <returns>用户输入的内容（已 Trim）；点取消或内容为空返回 null。</returns>
     public static string? Show(Window owner, string title, string label, string? initial)
     {
-        var bg = Theme.Get("BgDeep", "#FF171717");
-        var fg = Theme.Get("Text", "#FFEDEDED");
-        var dim = Theme.Get("TextDim", "#FFADADB4");
-        var boxBg = Theme.Get("BgElevated", "#FF2E2E31");
-        var btnBg = Theme.Get("BgElevated", "#FF2E2E31");
-        var border = Theme.Get("Border", "#FF3F3F45");
+        var bg = Theme.Get("BgDeep");
+        var fg = Theme.Get("Text");
+        var dim = Theme.Get("TextDim");
+        var boxBg = Theme.Get("BgElevated");
+        var btnBg = Theme.Get("BgElevated");
+        var border = Theme.Get("Border");
 
         var tb = new TextBox
         {

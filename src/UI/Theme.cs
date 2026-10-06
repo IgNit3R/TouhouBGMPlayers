@@ -10,12 +10,18 @@ namespace ThbgmPlayer.UI;
 /// PromptDialog / ExportDialog 是用代码搭的，拿不到 XAML 的 StaticResource，
 /// 只能显式取。不这么做的话它们各硬编码一份颜色，改色板时必然会漏。
 ///
-/// 取不到（资源还没合并、键名写错、设计器环境）时按备用色值构造一个，
-/// 保证既不炸也不至于看不见。
+/// 三级查找：
+///   ① 应用层资源字典（ThemeManager 加载的当前主题色表）；
+///   ② 常驻的深色基准表（ThemeManager.Canonical）—— 键名写错、字典没换过来时
+///      退到「已知正确的深色」，界面绝不至于看不见；
+///   ③ Transparent —— 两级都没有也不抛，交由调用方继续跑。
+///
+/// 旧签名曾带十六进制兜底实参：随浅色主题引入一并删除 —— 「代码里不留颜色
+/// 字面量」是硬规矩，且一套写死的兜底色在任何一套主题下都只会误导。
 /// </summary>
 internal static class Theme
 {
-    public static Media.Brush Get(string key, string fallbackHex)
+    public static Media.Brush Get(string key)
     {
         try
         {
@@ -24,10 +30,20 @@ internal static class Theme
         }
         catch
         {
-            // 资源未就位，走下面的回退
+            // 资源未就位，走下一级
         }
 
-        return new Media.SolidColorBrush((Media.Color)Media.ColorConverter.ConvertFromString(fallbackHex));
+        try
+        {
+            if (ThemeManager.Canonical[key] is Media.Brush f)
+                return f;
+        }
+        catch
+        {
+            // 兜底源也没有这个键，走 Transparent
+        }
+
+        return Media.Brushes.Transparent;
     }
 
     /// <summary>

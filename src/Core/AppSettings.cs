@@ -89,6 +89,16 @@ public sealed class UiSettings
     ///   · 非空时优先于 FontFamily
     /// </summary>
     [JsonPropertyName("fontFile")] public string? FontFile { get; set; }
+
+    /// <summary>
+    /// UI 主题："dark"（默认）或 "light"。值域归 ThemeManager.Normalize 管，
+    /// 这里只存字符串。字面量不引用 UI 层常量：Core 不依赖 UI，保持依赖方向干净。
+    ///
+    /// 向后兼容：这是带默认值的 CLR 属性，老 settings.json 里没有 theme 键时
+    /// System.Text.Json 会跳过赋值，反序列化结果就是 "dark"，与升级前行为一致，
+    /// 不需要版本迁移。
+    /// </summary>
+    [JsonPropertyName("theme")] public string Theme { get; set; } = "dark";
 }
 
 /// <summary>最近播放，用于启动时恢复。</summary>

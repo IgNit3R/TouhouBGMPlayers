@@ -112,13 +112,13 @@ public static class AboutDialog
 
     public static void Show(Window owner)
     {
-        var bg = Theme.Get("BgDeep", "#FF171717");
-        var fg = Theme.Get("Text", "#FFEDEDED");
-        var dim = Theme.Get("TextDim", "#FFADADB4");
-        var panel = Theme.Get("BgPanel", "#FF222224");
-        var border = Theme.Get("Border", "#FF3F3F45");
-        var btnBg = Theme.Get("BgElevated", "#FF2E2E31");
-        var em = Theme.Get("Emphasis", "#FF9CDCFE");
+        var bg = Theme.Get("BgDeep");
+        var fg = Theme.Get("Text");
+        var dim = Theme.Get("TextDim");
+        var panel = Theme.Get("BgPanel");
+        var border = Theme.Get("Border");
+        var btnBg = Theme.Get("BgElevated");
+        var em = Theme.Get("Emphasis");
 
         TextBlock Info(string text, Media.Brush color, double size, bool bold = false) =>
             new()

@@ -17,34 +17,28 @@ namespace ThbgmPlayer.UI;
 /// <summary>设置窗口「路径」页的一行：一部作品。</summary>
 public sealed class PathRow : ViewModelBase
 {
-    // 画刷统一取自主题（Themes/DarkTheme.xaml），不要在这里另写一份 ——
-    // 否则调整色板时这里有遗漏，界面上就会出现两套颜色。
-    // 取不到（设计器里、或键名写错）时回退到同色值的硬编码，保证不炸也不瞎。
-    private static readonly Brush BrOk = ThemeBrush("Ok", "#FF4EC9B0");
-    private static readonly Brush BrWarn = ThemeBrush("Warn", "#FFCEA86A");
-    private static readonly Brush BrFail = ThemeBrush("Fail", "#FFD4696B");
-    private static readonly Brush BrDim = ThemeBrush("TextFaint", "#FF71717A");
-    private static readonly Brush BrPending = ThemeBrush("TextDim", "#FFADADB4");
-
-    private static Brush ThemeBrush(string key, string fallbackHex)
-    {
-        try
-        {
-            if (System.Windows.Application.Current?.Resources[key] is Brush b)
-                return b;
-        }
-        catch
-        {
-            // 资源还没就位时静默回退
-        }
-        return new SolidColorBrush((Color)ColorConverter.ConvertFromString(fallbackHex));
-    }
+    // 画刷统一取自主题，不要在这里另写一份 —— 否则调整色板时这里有遗漏，
+    // 界面上就会出现两套颜色。
+    // ⚠️ 刻意用实例字段而不是 static readonly：后者在类型初始化时就把 Brush
+    // 冻在当时的主题上，换主题后这里永远不跟着换；PathRow 每次开设置窗口
+    // 都会重建，实例字段正好跟随当前主题。
+    private readonly Brush BrOk = Theme.Get("Ok");
+    private readonly Brush BrWarn = Theme.Get("Warn");
+    private readonly Brush BrFail = Theme.Get("Fail");
+    private readonly Brush BrDim = Theme.Get("TextFaint");
+    private readonly Brush BrPending = Theme.Get("TextDim");
 
     private string? _path;
     private string _statusText = "未设置";
-    private Brush _statusBrush = BrDim;
+    private Brush _statusBrush;
 
-    public PathRow(GameDef game) => Game = game;
+    public PathRow(GameDef game)
+    {
+        Game = game;
+        // 字段初始化器不能引用实例字段（CS0236），BrDim 又必须随实例取（跟当前主题），
+        // 所以初值在构造函数里给
+        _statusBrush = BrDim;
+    }
 
     public GameDef Game { get; }
 
@@ -104,6 +98,22 @@ public partial class SettingsWindow : Window
 
     /// <summary>播放参数是否真的被改过。主窗口据此决定要不要重建当前曲目的时间线。</summary>
     public bool PlaybackChanged { get; private set; }
+
+    /// <summary>
+    /// 本次会话里主题被改过（待主窗口在对话框**彻底关闭后**执行重建）。
+    /// 主题切换 = 重建主窗口 = 连带关掉本对话框（Owner 是主窗口），
+    /// 所以这里只记值不执行，见 <see cref="TakePendingTheme"/>。
+    /// </summary>
+    public bool ThemeChanged { get; private set; }
+
+    /// <summary>打开时的主题。「取消」用它回滚。</summary>
+    private readonly string _themeOnOpen = AppSettings.Current.Ui.Theme;
+
+    /// <summary>
+    /// 「应用」且改了主题时置位：主窗口据此在切换完成后**重开本窗（外观页）**。
+    /// 「确定」不置位 —— 用户点确定的预期是关窗生效，不是再弹回来。
+    /// </summary>
+    public bool ReopenAfterTheme { get; private set; }
 
     /// <summary>打开时选中第几个标签页：0 路径 / 1 播放参数 / 2 导出 / 3 外观。</summary>
     public int InitialTab { get; set; }
@@ -315,6 +325,44 @@ public partial class SettingsWindow : Window
     {
         FillFontCombo(FontCombo, AppSettings.Current.Ui.FontFamily);
         FillFontCombo(ContentFontCombo, AppSettings.Current.Ui.ContentFontFamily);
+        FillThemeCombo();
+    }
+
+    /// <summary>主题下拉：两档固定值，回选已保存的主题。</summary>
+    private void FillThemeCombo()
+    {
+        ThemeCombo.Items.Clear();
+        ThemeCombo.Items.Add(new ComboBoxItem { Content = "深色", Tag = ThemeNames.Dark });
+        ThemeCombo.Items.Add(new ComboBoxItem { Content = "浅色", Tag = ThemeNames.Light });
+        string saved = ThemeNames.Normalize(AppSettings.Current.Ui.Theme);
+        ThemeCombo.SelectedItem = ThemeCombo.Items.Cast<ComboBoxItem>()
+                                       .First(i => (string?)i.Tag == saved);
+    }
+
+    /// <summary>
+    /// 与字体（选中即预览）不同，这里**不做即时切换**：
+    /// 换主题要重建主窗口，而本对话框的 Owner 就是主窗口 —— 在「应用」回调里重建
+    /// 会把还开着的本对话框一起关掉。所以这里只记值，主窗口在 ShowDialog 返回
+    /// （对话框已彻底关闭）后经 <see cref="TakePendingTheme"/> 取走并执行。
+    /// </summary>
+    private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded) return;   // 构造期 FillThemeCombo 不算用户操作
+        if (ThemeCombo.SelectedItem is not ComboBoxItem { Tag: string t }) return;
+
+        AppSettings.Current.Ui.Theme = t;
+        ThemeChanged = true;
+    }
+
+    /// <summary>
+    /// 取本次待执行的主题（取出即清标记，保证只重建一次）。
+    /// 主窗口在对话框关闭后调用；返回 null 表示本次没改主题。
+    /// </summary>
+    public string? TakePendingTheme()
+    {
+        if (!ThemeChanged) return null;
+        ThemeChanged = false;
+        return AppSettings.Current.Ui.Theme;
     }
 
     /// <summary>
@@ -405,7 +453,19 @@ public partial class SettingsWindow : Window
 
     // ---------- 应用 / 关闭 ----------
 
-    private void Apply_Click(object sender, RoutedEventArgs e) => ApplyAll();
+    private void Apply_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyAll();
+
+        // 主题变更走「主动关窗 → 主窗口重建 → 重开本窗」：
+        // 重建会连带关掉本对话框（Owner 是主窗口），与其被动炸掉不如主动走，
+        // 让「应用」和「确定」一样立即生效。重开由主窗口在切换完成后做。
+        if (ThemeChanged)
+        {
+            ReopenAfterTheme = true;
+            DialogResult = true;
+        }
+    }
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
@@ -413,7 +473,13 @@ public partial class SettingsWindow : Window
         DialogResult = true;
     }
 
-    private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        // 字体等项的即时预览回不去（既有行为），主题这条可以：它只是个字符串
+        AppSettings.Current.Ui.Theme = _themeOnOpen;
+        ThemeChanged = false;
+        DialogResult = false;
+    }
 
     /// <summary>点了「应用」之后触发（此时对话框还开着）。主窗口订阅它把副作用
     /// （切输出设备、重挂热键、时间线重算等）**立即**应用，而不是等关窗。</summary>

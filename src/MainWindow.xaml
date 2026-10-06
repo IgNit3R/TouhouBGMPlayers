@@ -14,15 +14,12 @@
 
     <Window.Resources>
         <!--
-        画刷与共享控件样式都在 Themes/DarkTheme.xaml（应用级）。
-        这里只放本窗口专用的：表格网格线，以及比面板再亮一档的表头底色。
+        画刷与共享控件样式都在应用级主题里（Colors.Dark / Colors.Light 色表 + Controls.xaml）。
+        原先放在这里的 GridLine / HeaderBg / SelectionBg 已收编进色表，随主题一起切换。
 
-        注意：不要在这里再写 Button / ComboBox / ComboBoxItem / MenuItem 的隐式样式 ——
+        注意：不要在这里写 Button / ComboBox / ComboBoxItem / MenuItem 的隐式样式 ——
         窗口级样式会盖掉应用级的，主题就白做了（下拉框看不清、菜单有白边，根因都在这）。
         -->
-        <SolidColorBrush x:Key="GridLine"    Color="#FF2B2B2C"/>
-        <SolidColorBrush x:Key="HeaderBg"    Color="#FF2A2A2C"/>
-        <SolidColorBrush x:Key="SelectionBg" Color="#FF4A4A52"/>
 
         <!-- 乐评正文框（第 5 行右栏专用，显式键样式、不进主题：全项目仅此一处 TextBox）。
              ⚠️ 主题里没有 TextBox 样式，默认模板在深色下是白底黑字，必须自写；
@@ -258,7 +255,7 @@
         <Border x:Name="MarqueeRect" IsHitTestVisible="False" Visibility="Collapsed"
                 HorizontalAlignment="Left" VerticalAlignment="Top"
                 BorderBrush="{StaticResource Accent}" BorderThickness="1"
-                Background="#2E0E639C"/>
+                Background="{StaticResource MarqueeFill}"/>
         <!-- 拖动排序的插入指示线：一条横线，落在目标行的上沿或下沿 -->
         <Border x:Name="InsertLine" IsHitTestVisible="False" Visibility="Collapsed"
                 HorizontalAlignment="Left" VerticalAlignment="Top"
@@ -374,24 +371,26 @@
                 「裏」切换按钮（UraToggle）：仅当前曲有裏评论（CommentIndex.HasOmake，**数据驱动**，
                    不是按作品白名单硬编码）时可见；高亮 = 正在显示裏评；表/裏显示态**每曲重置为表**，
                    由 RefreshComment 键比较负责。
-                自动收放（用户 2026-10-06 定）：默认向左收成一小条（露右端 5px），鼠标悬停才滑出；
+                自动收放（用户 2026-10-06 定）：裁剪容器 UraClip 默认 **Width=5**（显式值 ⇒ 首次渲染前
+                   就是收起态；⚠️ 与 C# 的 UraPeekPx 两处同步），鼠标悬停时容器宽度动画到按钮全宽滑出；
                    正文有选中文本（复制场景）或鼠标左键按着时不弹出（UraCanExpand 口径）。
-                   ⚠️ ClipToBounds 必须开：收起是 RenderTransform 平移出容器，不裁剪会画到波形区上。
+                   露出的是按钮左端 5px 小条（高亮态透 Accent 色）；超宽部分被容器裁掉。
+                ⚠️ UraClip 必须是 **Canvas**：Grid 会把自身 Width（5px）当测量约束传给按钮，
+                   按钮 ActualWidth 被压成 5 ⇒ SetUraExpanded 的「target ≤ peek」防御直接拦截、
+                   永不弹出（r4 踩过）；Canvas 给子元素的是无约束测量，ActualWidth 恢复内容全宽。
                 -->
                 <Grid x:Name="CommentPane" Grid.Column="1" Margin="10,0,0,0" Visibility="Collapsed"
                       ClipToBounds="True">
                     <TextBox x:Name="CommentBox" Style="{StaticResource CommentBoxStyle}"
                              SelectionChanged="CommentBox_SelectionChanged"/>
-                    <ToggleButton x:Name="UraToggle" Style="{StaticResource UraToggleStyle}"
-                                  Content="裏音楽コメント" HorizontalAlignment="Left"
-                                  VerticalAlignment="Top"
-                                  ToolTip="显示裏音楽コメント（おまけ.txt 的隐藏评论）；高亮时为裏"
-                                  Checked="UraToggle_Changed" Unchecked="UraToggle_Changed"
-                                  MouseEnter="UraToggle_MouseEnter" MouseLeave="UraToggle_MouseLeave">
-                        <ToggleButton.RenderTransform>
-                            <TranslateTransform x:Name="UraTranslate"/>
-                        </ToggleButton.RenderTransform>
-                    </ToggleButton>
+                    <Canvas x:Name="UraClip" Width="5" Height="18" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <ToggleButton x:Name="UraToggle" Style="{StaticResource UraToggleStyle}"
+                                      Content="裏音楽コメント" Canvas.Left="0" Canvas.Top="0"
+                                      ToolTip="显示裏音楽コメント（おまけ.txt 的隐藏评论）；高亮时为裏"
+                                      Checked="UraToggle_Changed" Unchecked="UraToggle_Changed"
+                                      MouseEnter="UraToggle_MouseEnter" MouseLeave="UraToggle_MouseLeave"/>
+                    </Canvas>
                 </Grid>
             </Grid>
         </Border>

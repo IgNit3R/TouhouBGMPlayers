@@ -40,6 +40,7 @@ internal static class VizSelfTest
         {
             CheckCommandLine(),
             CheckThemeBrushes(),
+            CheckColorKeyParity(),
             CheckSettingsLocation(),
             CheckSettingsRoundTrip(),
             CheckVizFrameShape(),
@@ -119,26 +120,90 @@ internal static class VizSelfTest
 
     /// <summary>
     /// 主题画刷真的在应用级资源里。注意不能只看 <c>Theme.Get</c> 的返回值 ——
-    /// 取不到时它会静默用兜底色，颜色一模一样，反而查不出「键写错了」。
+    /// 取不到时它会静默退到深色基准表，颜色一致，反而查不出「键写错了」。
+    /// 不再钉死具体色值：有了浅色主题（Colors.Light.xaml）之后，
+    /// 「必须等于某个十六进制」在另一套主题下必红；改成「键在、且是 SolidColorBrush」，
+    /// 与当前是哪套主题无关。两套色表的键集合对齐由 <see cref="CheckColorKeyParity"/> 单独把关。
     /// </summary>
     private static Result CheckThemeBrushes()
     {
         var res = Application.Current?.Resources;
         if (res is null)
-            return new Result("主题画刷 VizBar / VizLineL", false, "Application.Current.Resources 不可用");
+            return new Result("主题画刷存在性", false, "Application.Current.Resources 不可用");
 
-        bool bar = res["VizBar"] is SolidColorBrush b1 && b1.Color == FromHex("#FF2E86C4");
-        bool lin = res["VizLineL"] is SolidColorBrush b2 && b2.Color == FromHex("#FF3A96DD");
+        string[] need =
+        {
+            "VizBar", "VizLineL", "VizMark", "WaveGrid",
+            "BgDeep", "BgPanel", "BgElevated", "Border", "Emphasis", "Warn", "TextDim", "TextFaint",
+        };
+        var missing = need.Where(k => res[k] is not SolidColorBrush).ToArray();
+        bool ok = missing.Length == 0;
 
-        // 顺带确认复用到的既有画刷也都在（渲染器要按 key 取）
-        var reuse = new[] { "BgDeep", "BgPanel", "BgElevated", "Border", "Emphasis", "Warn", "TextDim", "TextFaint" };
-        var missing = reuse.Where(k => res[k] is not SolidColorBrush).ToArray();
+        string detail = missing.Length == 0
+            ? $"12 个键都在（当前主题 VizBar={((SolidColorBrush)res["VizBar"]).Color} VizLineL={((SolidColorBrush)res["VizLineL"]).Color}）"
+            : $"缺画刷：{string.Join(", ", missing)}";
 
-        bool ok = bar && lin && missing.Length == 0;
-        string detail = $"VizBar={Show(bar)} VizLineL={Show(lin)}；" +
-                        (missing.Length == 0 ? "复用画刷 8 个都在" : $"缺复用画刷：{string.Join(", ", missing)}");
+        return new Result("主题画刷存在性 + 取自当前色表", ok, detail);
+    }
 
-        return new Result("主题画刷 VizBar / VizLineL + 复用画刷", ok, detail);
+    /// <summary>
+    /// Colors.Dark / Colors.Light 的 x:Key 集合必须完全一致，且值都是画刷。
+    /// 「样式只写一份、切主题只换色表」这条架构唯一的机器闸门：
+    /// 少一个键 = 切到另一边直接 XamlParseException，肉眼 diff 两份色表守不住。
+    /// 各自装独立实例来比，不动运行中的应用字典。
+    /// </summary>
+    private static Result CheckColorKeyParity()
+    {
+        var report = new List<string>();
+        HashSet<string>? dark = null;
+        bool ok = true;
+
+        foreach (var n in new[] { "Colors.Dark", "Colors.Light" })
+        {
+            ResourceDictionary d;
+            try
+            {
+                d = new ResourceDictionary
+                {
+                    Source = new Uri($"pack://application:,,,/Themes/{n}.xaml", UriKind.Absolute),
+                };
+            }
+            catch (Exception ex)
+            {
+                return new Result("色表键集合一致（Dark 与 Light）", false, $"{n} 加载失败：{ex.Message}");
+            }
+
+            var keys = d.Keys.OfType<string>().ToHashSet(StringComparer.Ordinal);
+
+            var notBrush = keys.Where(k => d[k] is not SolidColorBrush).ToList();
+            if (notBrush.Count > 0)
+            {
+                ok = false;
+                report.Add($"{n} 含非画刷条目：{string.Join(",", notBrush)}");
+            }
+
+            if (dark is null)
+            {
+                dark = keys;
+                report.Add($"{n} 共 {keys.Count} 键");
+            }
+            else
+            {
+                var onlyDark = dark.Except(keys).ToList();
+                var onlyThis = keys.Except(dark).ToList();
+                if (onlyDark.Count > 0 || onlyThis.Count > 0)
+                {
+                    ok = false;
+                    report.Add($"键不对齐：仅深色有 [{string.Join(",", onlyDark)}]，仅浅色有 [{string.Join(",", onlyThis)}]");
+                }
+                else
+                {
+                    report.Add($"浅色与深色逐键对齐（{keys.Count} 键）");
+                }
+            }
+        }
+
+        return new Result("色表键集合一致（Dark 与 Light）", ok, string.Join("；", report));
     }
 
     /// <summary>
@@ -1593,9 +1658,14 @@ internal static class VizSelfTest
         return n;
     }
 
-    /// <summary>面板底色（<c>VizStyle.Background</c> ← 主题 <c>BgDeep</c>）。从主题取而不是写死。</summary>
+    /// <summary>
+    /// 面板底色（<c>VizStyle.Background</c> ← 主题 <c>BgDeep</c>）。
+    /// Theme.Get 是三级查找（当前色表 → 深色基准 → Transparent），
+    /// 走到这里兜底几乎不可能触发；Transparent 只在「资源全空」的异常态出现，
+    /// 此时依赖它的亮度用例自然会红 —— 那正是想要的信号。
+    /// </summary>
     private static Color BackgroundColor =>
-        VizStyle.Create().Background is SolidColorBrush b ? b.Color : Color.FromRgb(0x17, 0x17, 0x17);
+        VizStyle.Create().Background is SolidColorBrush b ? b.Color : default;
 
     /// <summary>
     /// 调试声源的**编码路由**：<c>.ogg</c> 里可能是 Vorbis 也可能是 Opus（扩展名一样）。

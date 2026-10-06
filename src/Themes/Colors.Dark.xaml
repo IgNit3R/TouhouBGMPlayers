@@ -1,0 +1,101 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+    ============================================================
+     深色主题：色表（只放画刷，样式在 Controls.xaml）
+    ============================================================
+     与 Colors.Light.xaml 是契约关系：两边的 x:Key 集合必须逐一对齐，
+     少一个键 = 切到另一边直接 XamlParseException（VizSelfTest 有机器校验）。
+     切换时 ThemeManager 会整体换掉本文件，并让 Controls.xaml 重新
+     加载一次，里面的 StaticResource 才会解析到新 Brush 实例。
+     注意：本文件不许再合并任何 MergedDictionaries，每多合并一次
+     就多一套 Brush 实例，切换时会只换一半。
+    -->
+
+    <!-- ================= 表面 ================= -->
+    <SolidColorBrush x:Key="BgDeep"        Color="#FF171717"/>   <!-- 窗口底 -->
+    <SolidColorBrush x:Key="BgPanel"       Color="#FF222224"/>   <!-- 条带、面板、下拉弹层 -->
+    <SolidColorBrush x:Key="BgAltRow"      Color="#FF1C1C1E"/>   <!-- 斑马纹交替行 -->
+    <SolidColorBrush x:Key="BgElevated"    Color="#FF2E2E31"/>   <!-- 输入控件、按钮 -->
+    <SolidColorBrush x:Key="BgHover"       Color="#FF393940"/>   <!-- 悬停 -->
+    <SolidColorBrush x:Key="BgPressed"     Color="#FF43434A"/>   <!-- 按下 -->
+
+    <!-- ================= 描边 ================= -->
+    <SolidColorBrush x:Key="Border"        Color="#FF3F3F45"/>
+    <SolidColorBrush x:Key="BorderHover"   Color="#FF52525A"/>
+    <SolidColorBrush x:Key="BorderFocus"   Color="#FF6E6E7A"/>
+
+    <!-- ================= 文字 ================= -->
+    <SolidColorBrush x:Key="Text"          Color="#FFEDEDED"/>
+    <SolidColorBrush x:Key="TextDim"       Color="#FFADADB4"/>
+    <SolidColorBrush x:Key="TextFaint"     Color="#FF71717A"/>
+    <!-- 波形背景网格（很淡）。与曲目表的窗口级 GridLine #2B2B2C 同值 ⇒ 全 app 一套网格语言。
+         用在 BgDeep(#171717) 上，只高 0x14/通道：看得见但不抢波形与中线。 -->
+    <SolidColorBrush x:Key="WaveGrid"      Color="#FF2B2B2C"/>
+
+    <!-- ================= 强调（全局唯一的一个彩色） ================= -->
+    <SolidColorBrush x:Key="Accent"        Color="#FF0E639C"/>
+    <SolidColorBrush x:Key="AccentText"    Color="#FFFFFFFF"/>
+
+    <!-- ================= 语义色（低饱和） ================= -->
+    <SolidColorBrush x:Key="Ok"            Color="#FF4EC9B0"/>   <!-- 路径校验通过 -->
+    <SolidColorBrush x:Key="Warn"          Color="#FFCEA86A"/>   <!-- 有疑点 -->
+    <SolidColorBrush x:Key="Fail"          Color="#FFD4696B"/>   <!-- 校验失败 -->
+    <SolidColorBrush x:Key="Alt"           Color="#FFB07FD0"/>   <!-- 灵界版激活态的文字与描边 -->
+    <!-- 灵界版激活态的底色三档：暗紫调，思路与 RowPlaying（暗蓝调）一致 ——
+         小面积元素可以比行底色亮一点，要一眼看出「已切到灵界版」。 -->
+    <SolidColorBrush x:Key="AltBg"         Color="#FF3A2A4E"/>
+    <SolidColorBrush x:Key="AltBgHover"    Color="#FF4A365F"/>
+    <SolidColorBrush x:Key="AltBgPressed"  Color="#FF563F6E"/>
+
+    <!-- 通用「副版切换」按钮（数据驱动，见 TrackIndex.GameDef.MainLabel / AltLabel）。
+         底色取自两张 OST 封面的「紅」字（见 cover_art/记录_封面取色分析.md）：
+         新典(主版) #F6C3C8 浅玫瑰 / 原典(副版) #C2534F 砖红。
+         主版底色偏亮 → 文字用深色（VariantMainFg）；副版底色深 → 文字用浅色（AccentText）。
+         与上面灵界版那组紫色画刷各自独立，互不影响。 -->
+    <SolidColorBrush x:Key="VariantMainBg"        Color="#FFF6C3C8"/>   <!-- 主版（新典）底色 -->
+    <SolidColorBrush x:Key="VariantMainBorder"    Color="#FFE0AEB4"/>   <!-- 主版边框（略深，浅底上才看得见） -->
+    <SolidColorBrush x:Key="VariantMainBgHover"   Color="#FFEBB2B8"/>   <!-- 浅底按钮：hover 略深 -->
+    <SolidColorBrush x:Key="VariantMainBgPressed" Color="#FFDDA0A6"/>   <!-- pressed 更深 -->
+    <SolidColorBrush x:Key="VariantMainFg"        Color="#FF2A1014"/>   <!-- 主版文字（深，配浅底） -->
+    <SolidColorBrush x:Key="VariantAltBg"         Color="#FFC2534F"/>   <!-- 副版（原典）底色 -->
+    <SolidColorBrush x:Key="VariantAltBorder"     Color="#FFD4675F"/>   <!-- 副版边框（略亮） -->
+    <SolidColorBrush x:Key="VariantAltBgHover"    Color="#FFD2605A"/>
+    <SolidColorBrush x:Key="VariantAltBgPressed"  Color="#FFDE6E67"/>
+
+    <!-- 说明文字里的关键词强调（文件名、数值名之类）。比正文亮、比强调色淡。 -->
+    <SolidColorBrush x:Key="Emphasis"      Color="#FF9CDCFE"/>
+
+    <!-- 正在播放的那一行。比选中色淡得多，不能和选中态抢，但要能从底色和斑马纹里看出来 -->
+    <SolidColorBrush x:Key="RowPlaying"    Color="#FF233A4D"/>
+
+    <!-- ================= 可视化（只加这 2 个，其余全复用上面的） =================
+         定稿参数见 docs/2026-09-19-research-visualization.md §7。
+         VizBar  ：频谱柱、电平柱体（示波器右声道与相位指针复用 Emphasis #9CDCFE，
+                   示波器左声道与利萨如、相位指针复用 VizLineL —— 同族双蓝，不引入新色相）。 -->
+    <SolidColorBrush x:Key="VizBar"        Color="#FF2E86C4"/>
+    <!--
+    波形上的标记（循环入口）。用红是为了在饱和蓝的波形上**一眼能看见** ——
+    ⚠️ 别拿主题的 `Accent`（那是 #FF0E639C 深蓝，和 VizBar 撞色，试过，几乎看不见）。
+    -->
+    <SolidColorBrush x:Key="VizMark"       Color="#FFD4696B"/>
+    <SolidColorBrush x:Key="VizLineL"      Color="#FF3A96DD"/>
+
+    <!-- ================= 菜单 / 右键菜单 ================= -->
+    <SolidColorBrush x:Key="MenuPopupBg"     Color="#FF242427"/>
+    <SolidColorBrush x:Key="MenuPopupBorder" Color="#FF43434B"/>
+    <SolidColorBrush x:Key="MenuSeparator"   Color="#FF3A3A40"/>
+
+    <SolidColorBrush x:Key="ScrollBg"           Color="#FF1B1B1D"/>
+    <SolidColorBrush x:Key="ScrollThumb"        Color="#FF4A4A52"/>
+    <SolidColorBrush x:Key="ScrollThumbHover"   Color="#FF5E5E68"/>
+    <!-- ================= 原窗口级与硬编码收编 =================
+         GridLine / HeaderBg / SelectionBg 原在 MainWindow.xaml 窗口级，
+         MarqueeFill 原是 MainWindow.xaml 里框选矩形的硬编码填充
+         （Accent 加了 alpha 的写死版）。现在统一收进色表。 -->
+    <SolidColorBrush x:Key="GridLine"     Color="#FF2B2B2C"/>
+    <SolidColorBrush x:Key="HeaderBg"     Color="#FF2A2A2C"/>
+    <SolidColorBrush x:Key="SelectionBg"  Color="#FF4A4A52"/>
+    <SolidColorBrush x:Key="MarqueeFill"  Color="#2E0E639C"/>
+</ResourceDictionary>

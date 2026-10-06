@@ -117,6 +117,12 @@ public partial class MainWindow : Window
     /// <summary>在途的码率探针（换曲要取消它）。照 _waveCts 那套。</summary>
     private CancellationTokenSource? _detailCts;
 
+    /// <summary>
+    /// 换主题重建中（由 ThemeManager.ApplyTheme 打标记）。
+    /// Closing 据此走「让位」分支：不写几何、不 Save、不 Dispose 引擎。
+    /// </summary>
+    private bool _rebuilding;
+
     /// <summary>代数：探针回调回来时比对，不是最新一代就丢弃。照 _waveGen 那套。</summary>
     private long _detailGen;
 
@@ -135,7 +141,10 @@ public partial class MainWindow : Window
         RestoreWindowGeometry();
         ApplyFont();
 
-        _engine = new PlayerEngine();
+        // 引擎走进程级单例（AppServices）：换主题要重建本窗口，
+        // 重建时从这里接回同一条音链，正在播的曲目不断流。
+        // 引擎的释放统一在 App.OnExit，本窗口的 Closing 只放弃引用。
+        _engine = Core.AppServices.Engine;
         if (_engine.InitError is not null)
             PlaylistSummary.Text = $"音频设备初始化失败：{_engine.InitError}";
 
@@ -587,19 +596,22 @@ public partial class MainWindow : Window
     private bool UraCanExpand =>
         CommentBox.SelectionLength == 0 && Mouse.LeftButton != MouseButtonState.Pressed;
 
-    /// <summary>裏评按钮滑出 / 收回：向左平移（RenderTransform），收起时只露右端 UraPeekPx 一小条。
-    /// 平移出 CommentPane 的部分靠它的 ClipToBounds 裁掉，不会画到波形区上。</summary>
+    /// <summary>裏评按钮滑出 / 收回：驱动裁剪容器 <see cref="UraClip"/> 的 **Width**
+    /// （展开 = 按钮全宽，收起 = 只露左端 UraPeekPx 一小条，超宽部分被容器裁掉）。
+    /// 收起位是容器的显式 Width（XAML 初始 5）⇒ 首次渲染前就处于收起态 ——
+    /// r3 的 TranslateTransform 方案在首次渲染前拿不到 ActualWidth、Transform 停在展开位，
+    /// 造成「启动后第一次切到 th06 按钮默认全展开」的 bug，本结构从根上消除该时序问题。</summary>
     private void SetUraExpanded(bool expand)
     {
-        if (_uraExpanded == expand) return;
         _uraExpanded = expand;
 
-        double width = UraToggle.ActualWidth;
-        if (width <= 0) return;   // 尚未渲染（无实际宽度）：不动，首次悬停时再滑
+        // 防御只挡「按钮尚未渲染」（ActualWidth 0/NaN），条件必须用 **<**：
+        // 收起时 target 恰好 = UraPeekPx，写 <= 会把收回动作也拦死（r5 踩过：弹出后永不收回）
+        double target = expand ? UraToggle.ActualWidth : UraPeekPx;
+        if (double.IsNaN(target) || target < UraPeekPx) return;   // 未渲染：收起位已由 XAML 显式 Width 保证
 
-        var anim = new DoubleAnimation(expand ? 0 : -(width - UraPeekPx),
-                                       TimeSpan.FromMilliseconds(120));
-        UraTranslate.BeginAnimation(TranslateTransform.XProperty, anim);
+        var anim = new DoubleAnimation(target, TimeSpan.FromMilliseconds(120));
+        UraClip.BeginAnimation(WidthProperty, anim);
     }
 
     private void UraToggle_MouseEnter(object sender, MouseEventArgs e)
@@ -1615,7 +1627,7 @@ public partial class MainWindow : Window
         AltButton.IsEnabled = true;
         AltButton.Content = _engine!.UsingAlt ? "霊界版 ✓" : "霊界版";
 
-        // 切到灵界版：换上紫色激活样式（DarkTheme.xaml 里的 AltActiveButton）；
+        // 切到灵界版：换上紫色激活样式（Controls.xaml 里的 AltActiveButton）；
         // 换回主版：清掉本地 Style，重新走应用级隐式 Button 样式。
         if (_engine.UsingAlt)
             AltButton.Style = (Style)FindResource("AltActiveButton");
@@ -1718,12 +1730,27 @@ public partial class MainWindow : Window
     private void SettingsViz_Click(object sender, RoutedEventArgs e) => OpenSettings(4);
 
     /// <summary>打开设置窗口并定位到指定标签页：0 路径 / 1 播放参数 / 2 导出 / 3 外观 / 4 可视化。</summary>
-    private void OpenSettings(int tab)
+    internal void OpenSettings(int tab)
     {
         var dlg = new SettingsWindow { Owner = this, InitialTab = tab };
         dlg.Applied += () => ApplySettingsSideEffects(dlg);   // 点「应用」立即生效（对话框还开着）
         dlg.ShowDialog();
         ApplySettingsSideEffects(dlg);   // 关窗后再过一次（幂等）
+
+        // ⚠️ 主题切换必须等对话框**彻底关闭**之后才执行：
+        // 重建主窗口会连带关掉以它为 Owner 的窗口，挂 Applied 里的话
+        // 会在「应用」回调还没返回时把对话框炸掉。放这里也天然覆盖
+        // 「应用」与「确定」两条路径；TakePendingTheme 的一次性语义保证只重建一次。
+        if (dlg.TakePendingTheme() is { } theme)
+        {
+            bool reopen = dlg.ReopenAfterTheme;   // 只有「应用」为 true（「确定」的预期是关窗生效）
+            ThemeManager.ApplyTheme(theme, this);
+
+            // ApplyTheme 同步完成了重建，本窗口（旧主窗口）已 Close；
+            // 重开挂到 Application.MainWindow（此时已是新窗口）上，定位回外观页
+            if (reopen && Application.Current.MainWindow is MainWindow next)
+                next.OpenSettings(3);
+        }
     }
 
     /// <summary>
@@ -2130,10 +2157,127 @@ public partial class MainWindow : Window
         AppSettings.Current.Save();
     }
 
+    // ------------------------------------------------------------------ 主题重建（换主题立即生效）
+
+    /// <summary>换主题重建时由 ThemeManager 打标记：Closing 据此走「让位」分支。</summary>
+    public void MarkRebuilding() => _rebuilding = true;
+
+    /// <summary>重建失败回滚时清掉标记：旧窗口恢复普通窗口的身份（Closing 正常收尾）。</summary>
+    public void ClearRebuilding() => _rebuilding = false;
+
+    /// <summary>重建失败回滚后按设置把 DetachViz 摘掉的可视化重新装回来。</summary>
+    public void ReattachViz() => ApplyVizEnabled();
+
+    /// <summary>
+    /// 把可视化从本窗口上摘干净（幂等，内部就是 CloseVizWindow 的既有顺序：
+    /// 摘宿主订阅 → 解除贴附 → 关附件窗口 → 收内嵌列）。重建前必须调：
+    /// 附件窗口的 Owner 是本窗口，等 Close() 级联带走的话时序不可控；
+    /// 且 WindowHost 还订阅着本窗口的移动 / 缩放事件，要显式 Dispose。
+    /// 附件窗口走自己的 Closing 把几何写回 settings，新窗口装配时读回同一组值。
+    /// </summary>
+    public void DetachViz() => CloseVizWindow();
+
+    /// <summary>
+    /// 抓跨窗口要带走的那一小撮状态（见 <see cref="MainWindowState"/> 的注释：
+    /// 播放状态不搬，几何不经 settings）。
+    /// </summary>
+    public MainWindowState CaptureState()
+    {
+        // 最大化时 Width/Height 已被系统改成屏幕尺寸，还原尺寸要从 RestoreBounds 拿
+        var b = WindowState == WindowState.Normal
+            ? new Rect(Left, Top, Width, Height)
+            : RestoreBounds;
+
+        var cur = PlaylistCombo.SelectedItem as PlaylistItem;
+
+        return new MainWindowState
+        {
+            Left = b.Left,
+            Top = b.Top,
+            Width = b.Width,
+            Height = b.Height,
+            State = WindowState,
+
+            PlaylistGameId = cur?.GameId,
+            PlaylistIsFavorites = cur?.IsFavorites ?? false,
+            PlaylistCustom = cur?.Custom,
+
+            SelectedRef = (TrackGrid.SelectedItem as TrackRow)?.Ref,
+            GridScrollOffset = VisualScroll.OffsetOf(TrackGrid),
+        };
+    }
+
+    /// <summary>
+    /// 回放快照。由 ThemeManager 在新窗口创建之后、Show 之前调用。
+    /// 滚动位置要等布局完成，挂在 Loaded 里恢复。
+    /// </summary>
+    public void RestoreState(MainWindowState s)
+    {
+        if (double.IsFinite(s.Left) && double.IsFinite(s.Top)) { Left = s.Left; Top = s.Top; }
+        if (s.Width > 0 && s.Height > 0) { Width = s.Width; Height = s.Height; }
+        WindowState = s.State;
+
+        // 播放列表三元组找回（照 RebuildPlaylistsKeepSelection 的写法）；
+        // SelectedItem 赋值会触发 SelectionChanged → LoadPlaylist，曲目表随之重建
+        var target = PlaylistCombo.Items.Cast<PlaylistItem>().FirstOrDefault(i =>
+                         (s.PlaylistGameId is not null && i.GameId == s.PlaylistGameId) ||
+                         (s.PlaylistIsFavorites && i.IsFavorites) ||
+                         (s.PlaylistCustom is not null && ReferenceEquals(i.Custom, s.PlaylistCustom)));
+        if (target is not null) PlaylistCombo.SelectedItem = target;
+
+        // 选中行
+        if (s.SelectedRef is { } r)
+        {
+            var row = Rows.FirstOrDefault(x => x.Ref == r);
+            if (row is not null)
+            {
+                TrackGrid.SelectedItem = row;
+                TrackGrid.ScrollIntoView(row);
+            }
+        }
+
+        // 暂停中的曲目：播放面板不会自己重画（那是换曲 / Tick 驱动的），这里补一次；
+        // 正在播的话 Tick 马上会刷，重复调一次是幂等的
+        if (Core.AppServices.Engine.Current is { } cur &&
+            TrackIndex.ById.TryGetValue(cur.GameId, out var g))
+        {
+            var t = g.Tracks.FirstOrDefault(x => x.No == cur.TrackNo);
+            if (t is not null)
+            {
+                ShowPlayingPanel(g, t);
+                UpdatePlayingRow();
+            }
+        }
+
+        UpdateTransportEnabled();
+        UpdatePlayButton();
+        RefreshVariantControls();
+        UpdateFavoriteButton();
+
+        // 滚动位置：布局完成才恢复得了（见 VisualScroll 的注释）
+        Loaded += (_, _) => VisualScroll.SetOffset(TrackGrid, s.GridScrollOffset);
+    }
+
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         _tick?.Stop();
+        _selPreloadTimer?.Stop();
+        _reorderDelayTimer?.Stop();
         _mediaKeys?.Dispose();   // 热键不注销的话，窗口没了系统还会往里投递
+
+        // ⚠️ 换主题重建的「让位」分支：
+        // 几何已由 CaptureState 取走并被新窗口直接应用，这里绝不能再写 Ui.*（旧窗口
+        // 此刻若处于最大化，Width 已是屏幕尺寸，写回去会把用户的还原尺寸弄丢）；
+        // 引擎是进程级单例（AppServices），只放弃引用，绝不能 Dispose（新窗口在用）；
+        // 可视化窗口已由 ThemeManager 先一步 DetachViz 关掉，这里只清引用。
+        if (_rebuilding)
+        {
+            _vizHost?.Dispose();
+            _vizHost = null;
+            _vizWindow = null;
+            _engine = null;
+            return;
+        }
 
         var ui = AppSettings.Current.Ui;
         ui.Width = Width;
@@ -2148,7 +2292,8 @@ public partial class MainWindow : Window
         // 顺序反了就是「边读边释放」（与 VizWindow 内部那套顺序同一个道理）。
         CloseVizWindow();
 
-        _engine?.Dispose();
+        // 引擎不在释放这里了：它已提为进程级单例（AppServices），
+        // 由 App.OnExit 统一收。这里只放弃引用。
         _engine = null;
     }
 }

@@ -8,16 +8,16 @@
     写死 StartupUri 的话命令行参数就没机会插嘴。
     -->
     <!--
-    主题统一放 Themes/DarkTheme.xaml，在应用级合并。
-    放这里而不是各窗口的 Resources，是为了让下拉弹层、以及
+    主题字典由 UI.ThemeManager 在 OnStartup 最前面加载（App.xaml.cs）：
+      ① Themes/Colors.Dark.xaml 或 Colors.Light.xaml（色表，按 settings.json 二选一）
+      ② Themes/Controls.xaml（共享控件样式，StaticResource 指向 ① 的键）
+    两个必须由同一处、按这个顺序加载：顺序反了 ② 里的 StaticResource 在解析期
+    找不到键；在别处再合并一次色表则会产生第二套 Brush 实例，切换时只换一半。
+    放应用级而不是窗口级，是为了下拉弹层、以及
     用代码搭的对话框（PromptDialog / ExportDialog）也能拿到同一套画刷 ——
     Popup 的内容在另一棵可视化树上，窗口级资源不一定能继承到。
     -->
     <Application.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="Themes/DarkTheme.xaml"/>
-            </ResourceDictionary.MergedDictionaries>
-        </ResourceDictionary>
+        <ResourceDictionary/>
     </Application.Resources>
 </Application>

@@ -7,10 +7,10 @@ namespace ThbgmPlayer.Viz;
 /// 渲染用的观感资源：画刷 + DPI 折算。
 ///
 /// <b>颜色一律从主题取</b>（<see cref="Theme.Get"/> 是项目里代码侧取色板的唯一入口），
-/// 这里一个十六进制字面量都不留 —— 换色板时只改 DarkTheme.xaml，渲染器不用动。
+/// 这里一个十六进制字面量都不留 —— 换色板时只改 Colors.*.xaml，渲染器不用动。
 /// 传进去的兜底色只用于「资源还没合并 / 键名写错」的场合（<c>PromptDialog</c> 同款约定）。
 ///
-/// 画刷分配（见 DarkTheme.xaml 的注释，与定稿参数 docs/2026-09-19-research-visualization.md §7 一致）：
+/// 画刷分配（见 Colors.*.xaml 的注释，与定稿参数 docs/2026-09-19-research-visualization.md §7 一致）：
 /// <list type="bullet">
 /// <item><see cref="LineL"/> = VizLineL #3A96DD → 示波器左声道、利萨如、相位指针</item>
 /// <item><see cref="LineR"/> = Emphasis #9CDCFE → 示波器右声道（不新增色相，复用说明文字强调色）</item>
@@ -72,15 +72,15 @@ public sealed class VizStyle
 
     private VizStyle()
     {
-        Background = Theme.Get("BgDeep", "#FF171717");
-        Grid = Theme.Get("Border", "#FF3F3F45");
-        Track = Theme.Get("BgElevated", "#FF2E2E31");
-        Label = Theme.Get("TextFaint", "#FF71717A");
-        Value = Theme.Get("TextDim", "#FFADADB4");
-        LineL = Theme.Get("VizLineL", "#FF3A96DD");
-        LineR = Theme.Get("Emphasis", "#FF9CDCFE");
-        Bar = Theme.Get("VizBar", "#FF2E86C4");
-        Warn = Theme.Get("Warn", "#FFCEA86A");
+        Background = Theme.Get("BgDeep");
+        Grid = Theme.Get("Border");
+        Track = Theme.Get("BgElevated");
+        Label = Theme.Get("TextFaint");
+        Value = Theme.Get("TextDim");
+        LineL = Theme.Get("VizLineL");
+        LineR = Theme.Get("Emphasis");
+        Bar = Theme.Get("VizBar");
+        Warn = Theme.Get("Warn");
     }
 
     /// <summary>

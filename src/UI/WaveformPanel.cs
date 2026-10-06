@@ -55,24 +55,24 @@ public sealed class WaveformPanel : FrameworkElement
         // 底槽：整块都要画到，才有命中区域（见类型注释）
         // ⚠️ 用 **BgDeep**（#171717）—— 与右侧乐评框同底色（用户 2026-09-24 定）；
         // 原来用 BgElevated（#2E2E31）比乐评框亮一档，两块并排看得出边界。
-        _track = Theme.Get("BgDeep", "#FF171717");
+        _track = Theme.Get("BgDeep");
 
         // 中线：静音时给一个位置参照，否则空面板看不出"中间在哪"
         // 它同时是网格的 **0 轴**：网格线很淡，中线要明显亮一档（Border 落在更暗的 BgDeep 上对比反而更强）
-        _midBrush = Theme.Get("Border", "#FF3F3F45");
+        _midBrush = Theme.Get("Border");
         _midPen = FrozenPen(_midBrush, 1);
 
         // 网格线：**很淡**（与曲目表网格线同值 ⇒ 全 app 一套网格语言）
-        _gridBrush = Theme.Get("WaveGrid", "#FF2B2B2C");
+        _gridBrush = Theme.Get("WaveGrid");
         _gridPen = FrozenPen(_gridBrush, 1);
 
-        _wave = Theme.Get("VizBar", "#FF2E86C4");
+        _wave = Theme.Get("VizBar");
 
         // ⚠️ 标记用 **VizMark（红）**，不是主题的 Accent ——
         // Accent 是 `#FF0E639C`（深蓝），和波形的 VizBar `#2E86C4` 撞色，标记几乎看不见。
         // 挑主题色要查实际色值，别按名字猜（"Accent"听着像强调色，其实是 UI 蓝）。
-        _markBrush = Theme.Get("VizMark", "#FFD4696B");
-        _headBrush = Theme.Get("Text", "#FFE6E6E6");
+        _markBrush = Theme.Get("VizMark");
+        _headBrush = Theme.Get("Text");
 
         // 笔在首次渲染时按 DPI 建（构造时还没进可视树，拿不到真实 DPI）
         _markPen = FrozenPen(_markBrush, 1);

@@ -28,6 +28,10 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // 主题字典最先挂：本方法后面所有分支（含 --viz-selftest，它的 XAML
+        // 也要解析 StaticResource）都建立在资源就位的前提上。
+        ThbgmPlayer.UI.ThemeManager.Initialize();
+
         var launch = VizCommandLine.Parse(e.Args);
 
         if (launch.Mode == VizLaunchMode.SelfTest)
@@ -48,5 +52,16 @@ public partial class App : Application
         var main = new MainWindow();
         MainWindow = main;
         main.Show();
+    }
+
+    /// <summary>
+    /// 进程退场统一收尾。播放引擎已提为进程级单例（AppServices）：
+    /// 换主题重建主窗口时引擎要跨窗口存活，所以释放只能挂在这里，
+    /// 不能挂在主窗口的 Closing 上。
+    /// </summary>
+    protected override void OnExit(ExitEventArgs e)
+    {
+        Core.AppServices.Dispose();
+        base.OnExit(e);
     }
 }

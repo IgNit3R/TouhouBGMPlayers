@@ -18,15 +18,6 @@ namespace ThbgmPlayer.UI;
 /// </summary>
 public static class ExportDialog
 {
-    // 类型是 Brush 而不是 SolidColorBrush：Theme.Get 从资源字典取，
-    // 取到的是什么实现不定（也可能是渐变、图片画刷），不该在这里收窄。
-    private static readonly Media.Brush Bg = Theme.Get("BgDeep", "#FF171717");
-    private static readonly Media.Brush Fg = Theme.Get("Text", "#FFEDEDED");
-    private static readonly Media.Brush Dim = Theme.Get("TextDim", "#FFADADB4");
-    private static readonly Media.Brush Box = Theme.Get("BgElevated", "#FF2E2E31");
-    private static readonly Media.Brush Btn = Theme.Get("BgElevated", "#FF2E2E31");
-    private static readonly Media.Brush Bd = Theme.Get("Border", "#FF3F3F45");
-
     /// <param name="items">要导出的曲目，允许跨作品。</param>
     /// <param name="initialAlt">
     /// 初始勾选副版。版本行固定 4 项（原版 / 灵界版 / 新典 / 原典），按选中曲目的作品开放，
@@ -37,6 +28,19 @@ public static class ExportDialog
                             bool initialAlt = false)
     {
         if (items.Count == 0) return;
+
+        // ---------- 画刷 ----------
+        // 类型是 Brush 而不是 SolidColorBrush：Theme.Get 从资源字典取，
+        // 取到的是什么实现不定（也可能是渐变、图片画刷），不该在这里收窄。
+        // ⚠️ 刻意用局部变量而不是 static readonly：后者在类型初始化时就把 Brush
+        // 冻在当时的主题上，之后换主题（换字典 + 重建主窗口）这里永远不会跟着换；
+        // 每次 Show 现取，对话框永远用当前主题。
+        Media.Brush Bg = Theme.Get("BgDeep");
+        Media.Brush Fg = Theme.Get("Text");
+        Media.Brush Dim = Theme.Get("TextDim");
+        Media.Brush Box = Theme.Get("BgElevated");
+        Media.Brush Btn = Theme.Get("BgElevated");
+        Media.Brush Bd = Theme.Get("Border");
 
         var exp = AppSettings.Current.Export;
         var pb = AppSettings.Current.Playback;
@@ -309,7 +313,8 @@ public static class ExportDialog
 
         var tb = new TextBlock
         {
-            Text = label, Foreground = Dim,
+            // 辅助方法每次构控件现取（不依赖 Show 里的局部变量）—— 天然跟随当前主题
+            Text = label, Foreground = Theme.Get("TextDim"),
             VerticalAlignment = VerticalAlignment.Center, ToolTip = hint,
         };
 
@@ -325,13 +330,14 @@ public static class ExportDialog
     private static TextBox NumBox(string text) => new()
     {
         Text = text, Width = 84, Padding = new Thickness(5, 4, 5, 4),
-        Background = Box, Foreground = Fg, CaretBrush = Fg, BorderBrush = Bd,
+        Background = Theme.Get("BgElevated"), Foreground = Theme.Get("Text"),
+        CaretBrush = Theme.Get("Text"), BorderBrush = Theme.Get("Border"),
         VerticalContentAlignment = VerticalAlignment.Center,
     };
 
     private static CheckBox FollowBox(string text, bool on) => new()
     {
-        Content = text, IsChecked = on, Foreground = Dim,
+        Content = text, IsChecked = on, Foreground = Theme.Get("TextDim"),
         VerticalAlignment = VerticalAlignment.Center,
         Margin = new Thickness(10, 0, 0, 0),
     };

@@ -3,90 +3,15 @@
 
     <!--
     ============================================================
-     深色主题：调色板 + 共享控件样式
+     共享控件样式与模板（与主题无关，色值一律 StaticResource 取自当前色表）
     ============================================================
-    设计取向：
-      - 只有一套中性灰阶 + 一个强调色（蓝），不引入第二种彩色
-      - 语义色（通过/疑点/失败/灵界版）压低饱和度，只在有意义的场合出现
-      - 表面分 4 档，层次靠明度阶梯拉开，不靠描边和色相
-
-    表面明度阶梯（关键）：
-      17 窗口底 → 22 面板 → 2E 输入控件 → 39/43 悬停/按下
-    阶梯比原来的 1E/25/33 拉得更开，但仍在中性灰范围内，不显得花。
-
-    这里只放 ScrollBar / Button / ComboBox / ComboBoxItem 的样式。
-    Slider / ToolTip / CheckBox / RadioButton / ListBox / ProgressBar
-    暂未纳入（仍是系统默认），待定。
+     这里一个颜色定义都不写。ThemeManager 切主题时会连本文件一起
+     重新加载：Style 的 Setter 在解析期就把 Brush 实例烘进去了，
+     只换色表不重载样式的话，控件还会钉在旧颜色上。
+     两个前提（违反任意一条都会炸或不换色）：
+     · 色表必须排在本文件之前进 MergedDictionaries（解析期查找链）；
+     · 本文件内部不许再合并色表（会产生第二套 Brush 实例）。
     -->
-
-    <!-- ================= 表面 ================= -->
-    <SolidColorBrush x:Key="BgDeep"        Color="#FF171717"/>   <!-- 窗口底 -->
-    <SolidColorBrush x:Key="BgPanel"       Color="#FF222224"/>   <!-- 条带、面板、下拉弹层 -->
-    <SolidColorBrush x:Key="BgAltRow"      Color="#FF1C1C1E"/>   <!-- 斑马纹交替行 -->
-    <SolidColorBrush x:Key="BgElevated"    Color="#FF2E2E31"/>   <!-- 输入控件、按钮 -->
-    <SolidColorBrush x:Key="BgHover"       Color="#FF393940"/>   <!-- 悬停 -->
-    <SolidColorBrush x:Key="BgPressed"     Color="#FF43434A"/>   <!-- 按下 -->
-
-    <!-- ================= 描边 ================= -->
-    <SolidColorBrush x:Key="Border"        Color="#FF3F3F45"/>
-    <SolidColorBrush x:Key="BorderHover"   Color="#FF52525A"/>
-    <SolidColorBrush x:Key="BorderFocus"   Color="#FF6E6E7A"/>
-
-    <!-- ================= 文字 ================= -->
-    <SolidColorBrush x:Key="Text"          Color="#FFEDEDED"/>
-    <SolidColorBrush x:Key="TextDim"       Color="#FFADADB4"/>
-    <SolidColorBrush x:Key="TextFaint"     Color="#FF71717A"/>
-    <!-- 波形背景网格（很淡）。与曲目表的窗口级 GridLine #2B2B2C 同值 ⇒ 全 app 一套网格语言。
-         用在 BgDeep(#171717) 上，只高 0x14/通道：看得见但不抢波形与中线。 -->
-    <SolidColorBrush x:Key="WaveGrid"      Color="#FF2B2B2C"/>
-
-    <!-- ================= 强调（全局唯一的一个彩色） ================= -->
-    <SolidColorBrush x:Key="Accent"        Color="#FF0E639C"/>
-    <SolidColorBrush x:Key="AccentText"    Color="#FFFFFFFF"/>
-
-    <!-- ================= 语义色（低饱和） ================= -->
-    <SolidColorBrush x:Key="Ok"            Color="#FF4EC9B0"/>   <!-- 路径校验通过 -->
-    <SolidColorBrush x:Key="Warn"          Color="#FFCEA86A"/>   <!-- 有疑点 -->
-    <SolidColorBrush x:Key="Fail"          Color="#FFD4696B"/>   <!-- 校验失败 -->
-    <SolidColorBrush x:Key="Alt"           Color="#FFB07FD0"/>   <!-- 灵界版激活态的文字与描边 -->
-    <!-- 灵界版激活态的底色三档：暗紫调，思路与 RowPlaying（暗蓝调）一致 ——
-         小面积元素可以比行底色亮一点，要一眼看出「已切到灵界版」。 -->
-    <SolidColorBrush x:Key="AltBg"         Color="#FF3A2A4E"/>
-    <SolidColorBrush x:Key="AltBgHover"    Color="#FF4A365F"/>
-    <SolidColorBrush x:Key="AltBgPressed"  Color="#FF563F6E"/>
-
-    <!-- 通用「副版切换」按钮（数据驱动，见 TrackIndex.GameDef.MainLabel / AltLabel）。
-         底色取自两张 OST 封面的「紅」字（见 cover_art/记录_封面取色分析.md）：
-         新典(主版) #F6C3C8 浅玫瑰 / 原典(副版) #C2534F 砖红。
-         主版底色偏亮 → 文字用深色（VariantMainFg）；副版底色深 → 文字用浅色（AccentText）。
-         与上面灵界版那组紫色画刷各自独立，互不影响。 -->
-    <SolidColorBrush x:Key="VariantMainBg"        Color="#FFF6C3C8"/>   <!-- 主版（新典）底色 -->
-    <SolidColorBrush x:Key="VariantMainBorder"    Color="#FFE0AEB4"/>   <!-- 主版边框（略深，浅底上才看得见） -->
-    <SolidColorBrush x:Key="VariantMainBgHover"   Color="#FFEBB2B8"/>   <!-- 浅底按钮：hover 略深 -->
-    <SolidColorBrush x:Key="VariantMainBgPressed" Color="#FFDDA0A6"/>   <!-- pressed 更深 -->
-    <SolidColorBrush x:Key="VariantMainFg"        Color="#FF2A1014"/>   <!-- 主版文字（深，配浅底） -->
-    <SolidColorBrush x:Key="VariantAltBg"         Color="#FFC2534F"/>   <!-- 副版（原典）底色 -->
-    <SolidColorBrush x:Key="VariantAltBorder"     Color="#FFD4675F"/>   <!-- 副版边框（略亮） -->
-    <SolidColorBrush x:Key="VariantAltBgHover"    Color="#FFD2605A"/>
-    <SolidColorBrush x:Key="VariantAltBgPressed"  Color="#FFDE6E67"/>
-
-    <!-- 说明文字里的关键词强调（文件名、数值名之类）。比正文亮、比强调色淡。 -->
-    <SolidColorBrush x:Key="Emphasis"      Color="#FF9CDCFE"/>
-
-    <!-- 正在播放的那一行。比选中色淡得多，不能和选中态抢，但要能从底色和斑马纹里看出来 -->
-    <SolidColorBrush x:Key="RowPlaying"    Color="#FF233A4D"/>
-
-    <!-- ================= 可视化（只加这 2 个，其余全复用上面的） =================
-         定稿参数见 docs/2026-09-19-research-visualization.md §7。
-         VizBar  ：频谱柱、电平柱体（示波器右声道与相位指针复用 Emphasis #9CDCFE，
-                   示波器左声道与利萨如、相位指针复用 VizLineL —— 同族双蓝，不引入新色相）。 -->
-    <SolidColorBrush x:Key="VizBar"        Color="#FF2E86C4"/>
-    <!--
-    波形上的标记（循环入口）。用红是为了在饱和蓝的波形上**一眼能看见** ——
-    ⚠️ 别拿主题的 `Accent`（那是 #FF0E639C 深蓝，和 VizBar 撞色，试过，几乎看不见）。
-    -->
-    <SolidColorBrush x:Key="VizMark"       Color="#FFD4696B"/>
-    <SolidColorBrush x:Key="VizLineL"      Color="#FF3A96DD"/>
 
     <!--
     可视化区域外框（五块面板各套一层）。**必须放在应用级主题里**，不能放进任何一个宿主窗口的
@@ -102,11 +27,6 @@
         <Setter Property="Margin" Value="2"/>
         <Setter Property="SnapsToDevicePixels" Value="True"/>
     </Style>
-
-    <!-- ================= 菜单 / 右键菜单 ================= -->
-    <SolidColorBrush x:Key="MenuPopupBg"     Color="#FF242427"/>
-    <SolidColorBrush x:Key="MenuPopupBorder" Color="#FF43434B"/>
-    <SolidColorBrush x:Key="MenuSeparator"   Color="#FF3A3A40"/>
 
     <!--
     菜单弹层。默认模板的弹层背景取自 SystemColors（浅色）且带一圈浅色描边，
@@ -237,9 +157,6 @@
     </Style>
 
     <!-- ================= 滚动条 ================= -->
-    <SolidColorBrush x:Key="ScrollBg"           Color="#FF1B1B1D"/>
-    <SolidColorBrush x:Key="ScrollThumb"        Color="#FF4A4A52"/>
-    <SolidColorBrush x:Key="ScrollThumbHover"   Color="#FF5E5E68"/>
 
     <!--
     滚动条：只画轨道 + 滑块，去掉两端的箭头按钮（现代风格，也更省地方）。

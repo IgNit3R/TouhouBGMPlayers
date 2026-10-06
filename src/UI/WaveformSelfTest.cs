@@ -95,8 +95,13 @@ internal static class WaveformSelfTest
     }
 
     /// <summary>
-    /// 网格真的画出来了 —— 全用**相对比较**（自检时主题可能未合并，绝对颜色不可依赖）：
-    /// ① 竖线那一列比同行空白亮；② ±1/2 横线比它下方空白亮；③ 背景 &lt; 网格 &lt; 波形。
+    /// 网格真的画出来了 —— 全用**相对比较**：
+    /// ① 竖线那一列与同行空白的明暗关系；② ±1/2 横线与下方空白同上；
+    /// ③ 背景 / 网格 / 波形三者的排列与主题明度阶梯一致。
+    ///
+    /// ⚠️ 亮度方向**随主题**：深色里网格比背景亮、波形比网格亮；浅色里全部反转
+    /// （网格比背景暗）。期望方向从主题色表的实际色值现算，不硬编码大小关系 ——
+    /// 硬编码的话换一套主题这里必红（2026-10-07 引入浅色主题时踩过）。
     ///
     /// 取样位置的来历：W=400、span=100 ⇒ `TickStep` 取 20s ⇒ 刻度在 0/20/40/60/80/100 ⇒ x=0/80/160/240/320/400；
     /// `half=(96-2)/2=47` ⇒ ±1/2 在 y≈24.5（覆盖 24、25 两行）。
@@ -104,7 +109,7 @@ internal static class WaveformSelfTest
     /// </summary>
     private static VizSelfTest.Result CheckGridRender()
     {
-        const string Title = "波形网格渲染（竖线/横线可见，且暗于波形）";
+        const string Title = "波形网格渲染（竖线/横线可见，明暗关系随主题阶梯）";
 
         try
         {
@@ -122,24 +127,30 @@ internal static class WaveformSelfTest
 
             long vGrid = PixelBrightness(px, W, 160, 12);   // 40s 处的竖线
             long vBg = PixelBrightness(px, W, 180, 12);     // 两根竖线之间
-            bool vertical = vGrid > vBg;
 
             long hGrid = Math.Max(PixelBrightness(px, W, 180, 24), PixelBrightness(px, W, 180, 25));
             long hBg = PixelBrightness(px, W, 180, 30);     // ±1/2 与 ±1/4 之间
-            bool horizontal = hGrid > hBg;
 
-            // 波形比网格亮：换 ±40 的峰，取中线那一行
+            // 波形与网格的关系：换 ±40 的峰，取中线那一行
             var panel2 = new WaveformPanel();
             panel2.SetTrack(FlatPeaks(Total, spb, 0), isTfOneShot: false);
             var px2 = Render(panel2, W, H);
             long wave = PixelBrightness(px2, W, 200, H / 2);
-            bool order = vBg < vGrid && vGrid < wave;
+
+            // 期望方向由主题决定（自检在 ThemeManager.Initialize 之后跑，色表一定在）
+            long lBg = Lum(ThemeColor("BgDeep"));
+            long lGrid = Lum(ThemeColor("WaveGrid"));
+            long lWave = Lum(ThemeColor("VizBar"));
+
+            bool vertical = (vGrid > vBg) == (lGrid > lBg);
+            bool horizontal = (hGrid > hBg) == (lGrid > lBg);
+            bool order = (vBg < vGrid && vGrid < wave) == (lBg < lGrid && lGrid < lWave);
 
             bool ok = vertical && horizontal && order;
 
             return new VizSelfTest.Result(Title, ok,
-                $"竖线 {vGrid} > 空白 {vBg} = {vertical}；横线 {hGrid} > 空白 {hBg} = {horizontal}；" +
-                $"背景 {vBg} < 网格 {vGrid} < 波形 {wave} = {order}");
+                $"竖线 {vGrid} 对 空白 {vBg}（期望网格{(lGrid > lBg ? "亮" : "暗")}于背景）；" +
+                $"横线 {hGrid} 对 空白 {hBg}；背景 {vBg} / 网格 {vGrid} / 波形 {wave}（期望按主题阶梯排列）");
         }
         catch (Exception ex)
         {
@@ -153,6 +164,15 @@ internal static class WaveformSelfTest
         int i = (y * w + x) * 4;
         return px[i] + px[i + 1] + px[i + 2];
     }
+
+    /// <summary>按 key 从当前主题色表取色（自检在 ThemeManager.Initialize 之后跑，一定取得到）。</summary>
+    private static System.Windows.Media.Color ThemeColor(string key) =>
+        System.Windows.Application.Current.Resources[key] is System.Windows.Media.SolidColorBrush b
+            ? b.Color
+            : default;
+
+    /// <summary>粗略明度：RGB 之和，够用于方向比较。</summary>
+    private static long Lum(System.Windows.Media.Color c) => c.R + c.G + c.B;
 
     // ---------------------------------------------------------------- 分桶
 
