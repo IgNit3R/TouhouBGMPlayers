@@ -19,9 +19,11 @@ public sealed class CommentGame
     public Dictionary<string, CommentEntry> Tracks { get; init; } = new();
 }
 
-/// <summary>单条评论。⚠️ 只读这三个字段 —— 曲名/标题按契约**不在乐评区显示**（曲目列表与正在播放行已有），
-/// 其余字段用不到就让它自动忽略。TitleJa 是**播放器侧标题**（生成工具按标题重映射时写入），
-/// 自检的「永久对齐校验」拿它与 <see cref="TrackIndex"/> 同 No 的标题逐条比对 —— 两套序再怎么漂，这里当场红。</summary>
+/// <summary>单条评论。⚠️ 只读这五个字段 —— 曲名/标题按契约**不在乐评区显示**（曲目列表与正在播放行已有），
+/// 其余字段（omake_title_ja/zh 等）用不到就让它自动忽略。TitleJa 是**播放器侧标题**（生成工具按标题重映射时写入），
+/// 自检的「永久对齐校验」拿它与 <see cref="TrackIndex"/> 同 No 的标题逐条比对 —— 两套序再怎么漂，这里当场红。
+/// OmakeJa / OmakeZh 是裏音楽コメント（おまけ.txt，当前仅 th06/07/08）：与表评论同曲同键，
+/// 只有生成了 omake 数据的条目才有值（生成工具条件写键），其余反序列化为 null。</summary>
 public sealed class CommentEntry
 {
     [JsonPropertyName("title_ja")]
@@ -32,6 +34,12 @@ public sealed class CommentEntry
 
     [JsonPropertyName("comment_zh")]
     public string? Zh { get; init; }
+
+    [JsonPropertyName("comment_omake_ja")]
+    public string? OmakeJa { get; init; }
+
+    [JsonPropertyName("comment_omake_zh")]
+    public string? OmakeZh { get; init; }
 }
 
 /// <summary>
@@ -106,9 +114,40 @@ public static class CommentIndex
     public static bool TryGetComment(string gameId, int musicNo, CommentLanguage lang, out string comment)
     {
         comment = string.Empty;
+        return TryGetEntry(gameId, musicNo, out var entry)
+               && TryGetText(entry!, lang, out comment);
+    }
 
-        if (!ById.TryGetValue(gameId, out var game)) return false;
-        if (!game.Tracks.TryGetValue(musicNo.ToString(CultureInfo.InvariantCulture), out var entry)) return false;
+    /// <summary>按当前语言取裏评论（おまけ.txt 的裏音楽コメント，当前仅 th06/07/08）。有非空正文返回 true。</summary>
+    public static bool TryGetOmakeComment(string gameId, int musicNo, out string comment) =>
+        TryGetOmakeComment(gameId, musicNo, CurrentLanguage, out comment);
+
+    /// <summary>按指定语言取裏评论。有非空正文返回 true。无 omake 数据的条目自然返回 false。</summary>
+    public static bool TryGetOmakeComment(string gameId, int musicNo, CommentLanguage lang, out string comment)
+    {
+        comment = string.Empty;
+        if (!TryGetEntry(gameId, musicNo, out var entry) || entry is null) return false;
+
+        var text = (lang == CommentLanguage.Zh ? entry.OmakeZh : entry.OmakeJa) ?? string.Empty;
+        if (text.Length == 0) return false;
+
+        comment = text;
+        return true;
+    }
+
+    /// <summary>当前曲是否有裏评论（任一语言非空）——乐评区「表/裏」切换条可见性的判定口。
+    /// 刻意不依赖 <see cref="CurrentLanguage"/>：切换条是否出现不该随语言设置变。</summary>
+    public static bool HasOmake(string gameId, int musicNo)
+    {
+        return TryGetEntry(gameId, musicNo, out var entry)
+               && entry is not null
+               && (!string.IsNullOrEmpty(entry.OmakeJa) || !string.IsNullOrEmpty(entry.OmakeZh));
+    }
+
+    /// <summary>表评论的取值逻辑（裏评论字段名不同、结构同形，单独内联在上方）。</summary>
+    private static bool TryGetText(CommentEntry entry, CommentLanguage lang, out string comment)
+    {
+        comment = string.Empty;
 
         var text = (lang == CommentLanguage.Zh ? entry.Zh : entry.Ja) ?? string.Empty;
         if (text.Length == 0) return false;

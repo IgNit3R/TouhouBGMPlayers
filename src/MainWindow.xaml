@@ -70,6 +70,16 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 乐评区「裏音楽コメント」切换按钮（显式键样式：基于主题 ToggleSwitch 缩小号）。
+             单按钮切换，高亮（IsChecked）= 正在显示裏评。叠在 CommentBox 右上角、不占独立行
+             （用户 2026-10-06 定：不压低正文高度，第一行右端少量重叠可接受）。
+             ⚠️ BasedOn 引用应用级 ToggleSwitch（整份模板含选中态视觉），这里只覆盖尺寸类 setter。 -->
+        <Style x:Key="UraToggleStyle" TargetType="ToggleButton" BasedOn="{StaticResource ToggleSwitch}">
+            <Setter Property="Padding" Value="8,1"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Height" Value="18"/>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -349,7 +359,7 @@
                     <!-- 1:1（2026-09-24 改）：乐评栏太窄会把作者断的 ~30 字行二次折行；
                          改前 3:2 时本窗口宽下每行只放得下约 24 个日文字。
                          ⚠️ **初始宽度必须是 0**：启动时什么都还没播、没有评论 ⇒ 波形应当**拉满整行**
-                         （与"无评论的曲目"同款）。有评论时由 RefreshComment 设回 1*（两处必须同步）。 -->
+                         （与"无评论的曲目"同款）。有评论时由 UpdateCommentText 设回 1*（两处必须同步）。 -->
                     <ColumnDefinition Width="1*"/>
                     <ColumnDefinition x:Name="CommentColumn" Width="0"/>
                 </Grid.ColumnDefinitions>
@@ -357,13 +367,32 @@
                 <ui:WaveformPanel x:Name="Waveform" Grid.Column="0"/>
 
                 <!--
-                乐评区（音乐室评论正文）。
+                乐评区（音乐室评论正文 + 裏音楽コメント切换按钮）。
                 ⚠️ 两条已定契约：① 不显示曲名/标题（曲目列表与正在播放行已有）；② 只读一个字段。
                 ⚠️ 没有正文（原作没写 / 未播放）时**整列收起**（CommentColumn 归 0 ⇒ 波形占满整行），
-                   按「隐藏该区域而非留白块」的已定口径 —— 切换归 RefreshComment。
+                   按「隐藏该区域而非留白块」的已定口径，切换归 UpdateCommentText。
+                「裏」切换按钮（UraToggle）：仅当前曲有裏评论（CommentIndex.HasOmake，**数据驱动**，
+                   不是按作品白名单硬编码）时可见；高亮 = 正在显示裏评；表/裏显示态**每曲重置为表**，
+                   由 RefreshComment 键比较负责。
+                自动收放（用户 2026-10-06 定）：默认向左收成一小条（露右端 5px），鼠标悬停才滑出；
+                   正文有选中文本（复制场景）或鼠标左键按着时不弹出（UraCanExpand 口径）。
+                   ⚠️ ClipToBounds 必须开：收起是 RenderTransform 平移出容器，不裁剪会画到波形区上。
                 -->
-                <TextBox x:Name="CommentBox" Grid.Column="1" Margin="10,0,0,0"
-                         Style="{StaticResource CommentBoxStyle}" Visibility="Collapsed"/>
+                <Grid x:Name="CommentPane" Grid.Column="1" Margin="10,0,0,0" Visibility="Collapsed"
+                      ClipToBounds="True">
+                    <TextBox x:Name="CommentBox" Style="{StaticResource CommentBoxStyle}"
+                             SelectionChanged="CommentBox_SelectionChanged"/>
+                    <ToggleButton x:Name="UraToggle" Style="{StaticResource UraToggleStyle}"
+                                  Content="裏音楽コメント" HorizontalAlignment="Left"
+                                  VerticalAlignment="Top"
+                                  ToolTip="显示裏音楽コメント（おまけ.txt 的隐藏评论）；高亮时为裏"
+                                  Checked="UraToggle_Changed" Unchecked="UraToggle_Changed"
+                                  MouseEnter="UraToggle_MouseEnter" MouseLeave="UraToggle_MouseLeave">
+                        <ToggleButton.RenderTransform>
+                            <TranslateTransform x:Name="UraTranslate"/>
+                        </ToggleButton.RenderTransform>
+                    </ToggleButton>
+                </Grid>
             </Grid>
         </Border>
 

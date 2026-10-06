@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-make_musiccmt_resource.py — 音乐室评论内嵌资源生成（v2：按标题重映射到播放器 No）。
+make_musiccmt_resource.py — 音乐室评论内嵌资源生成（v3：透传裏音楽コメント omake 字段）。
 
 输入: docs/musiccmt/musiccmt.json（乐评支线维护；**键 = 乐评支线的「曲目表行序」**）
       + src/Resources/tracks*.json.gz（播放器内嵌曲目索引 = **UI 显示的权威序**）
 输出: src/Resources/musiccmt.json.gz（EmbeddedResource，LogicalName = musiccmt.json.gz；
       键 = **播放器的 No**，并保留 title_ja 供自检做对齐校验）
+
+v3（2026-10-06）：每曲**条件透传** comment_omake_ja / comment_omake_zh（裏音楽コメント，
+源自游戏目录おまけ.txt，当前仅 th06/07/08 有）。无 omake 的条目不写这两个键（不背空串）；
+omake_title_ja/zh 按契约继续丢弃（乐评区不显示标题，th07#17 / th08#8 的表记差异天然免疫）。
+可见性是数据驱动：将来任何作品补了 omake 数据，本工具自动透传，无需改代码。
 
 ⚠️ **为什么要重映射**：乐评支线的「曲目表行序」与播放器的「musicNo 序」在尾部曲目
 （ED/EX/Staffroll）和霊界版条目穿插处**不是同一个序**（实测 569 条按 No 直查有 85 条标题不一致）。
@@ -88,6 +93,7 @@ def main():
     matched = 0
     pairs = 0
     empty_pairs = 0
+    omake_pairs = 0
     with_nl = 0
     longest = ""
 
@@ -116,16 +122,29 @@ def main():
             if bool(ja.strip()) != bool(zh.strip()):
                 fail(f"{gid}#{no}「{title[:14]}」的 comment_ja / comment_zh 只有一边有值（应成对）")
 
+            # 裏音楽コメント（omake）：与表评论同款换行归一 + 成对校验；条件写键（无 omake 不写）
+            oja = (entry.get("comment_omake_ja") or "").replace("\r\n", "\n").replace("\r", "\n")
+            ozh = (entry.get("comment_omake_zh") or "").replace("\r\n", "\n").replace("\r", "\n")
+
+            if bool(oja.strip()) != bool(ozh.strip()):
+                fail(f"{gid}#{no}「{title[:14]}」的 comment_omake_ja / comment_omake_zh 只有一边有值（应成对）")
+
             player_nos = [str(t["n"]) for t in pg["tracks"]]
             player_title = pg["tracks"][player_nos.index(target)]["t"]
 
             # 🔑 结构与源 json 同形：{gid: {"tracks": {no: {...}}}} —— C# 的 CommentGame.Tracks 按 "tracks" 键取
-            g_out = out.setdefault(gid, {})
-            g_out.setdefault("tracks", {})[target] = {
+            rec = {
                 "title_ja": player_title,          # 存播放器侧标题：自检拿它与 TrackIndex 逐条对
                 "comment_ja": ja,
                 "comment_zh": zh,
             }
+            if oja.strip():
+                rec["comment_omake_ja"] = oja
+                rec["comment_omake_zh"] = ozh
+                omake_pairs += 1
+
+            g_out = out.setdefault(gid, {})
+            g_out.setdefault("tracks", {})[target] = rec
             matched += 1
 
             if ja.strip():
@@ -157,8 +176,9 @@ def main():
     with gzip.open(OUT, "wb", compresslevel=9) as f:
         f.write(payload)
 
-    print(f"musiccmt(v2 重映射): {len(out)} 作品 / 挂上播放器 No {matched} 条 / "
-          f"有评论 {pairs} 对 / 空对 {empty_pairs} / 含换行 {with_nl} 条（最长 {len(longest)} 字）")
+    print(f"musiccmt(v3 重映射): {len(out)} 作品 / 挂上播放器 No {matched} 条 / "
+          f"有评论 {pairs} 对 / 空对 {empty_pairs} / 裏评论 {omake_pairs} 对 / "
+          f"含换行 {with_nl} 条（最长 {len(longest)} 字）")
     if skipped:
         head = "、".join(skipped[:6])
         more = f" …共 {len(skipped)} 条" if len(skipped) > 6 else ""

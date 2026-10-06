@@ -12,6 +12,9 @@ namespace ThbgmPlayer.UI;
 ///
 /// ja/zh 成对性的**全量校验在生成工具**（<c>tools/make_musiccmt_resource.py</c>，它手里才有原始 json）；
 /// 这里只抽「已知空对」在运行时确实查不到。
+///
+/// 裏评（裏音楽コメント，当前仅 th06/07/08）两项：计数**快照断言**（内嵌 gz 若是没透传 omake
+/// 的旧版当场红 —— 抓「改了乐评数据忘重跑生成工具」）+ 内容抽查（裏≠表、双语非复制、HasOmake 三态）。
 /// </summary>
 internal static class CommentSelfTest
 {
@@ -23,6 +26,8 @@ internal static class CommentSelfTest
         CheckEmptyPairs(),
         CheckAlignment(),
         CheckNewlines(),
+        CheckOmakeCounts(),
+        CheckOmakeContent(),
     };
 
     /// <summary>
@@ -188,6 +193,110 @@ internal static class CommentSelfTest
 
             return new VizSelfTest.Result(Title, ok,
                 $"th06#11 命中 = {got}；换行数 {breaks}（期望 ≥ 2；按原作作者断行还原后为 5）");
+        }
+        catch (Exception ex)
+        {
+            return new VizSelfTest.Result(Title, false, ex.GetType().Name + "：" + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 裏评计数闸门：当前数据快照下，有裏评的条目**恰好**是 th06=17 / th07=20 / th08=21、
+    /// 其余作品全 0（含 th06nc —— 新典只有一套评论）。
+    /// 内嵌 gz 若是「没透传 omake 的旧版」，这里当场红（抓忘重跑生成工具）。
+    /// ⚠️ 这是数据快照断言：将来给其他作品补了裏评数据，期望值随数据一起更新。
+    /// 顺带全量断言裏评文本不含 '\r'（换行归一的回归）。裏评当前 58/58 单段无 '\n'，
+    /// 但**不**断言「无 '\n'」—— 那会挡住将来合法的数据修正。
+    /// </summary>
+    private static VizSelfTest.Result CheckOmakeCounts()
+    {
+        const string Title = "裏乐评计数（th06=17 / th07=20 / th08=21，其余为 0）";
+
+        try
+        {
+            var expect = new Dictionary<string, int>
+            {
+                ["th06"] = 17,
+                ["th07"] = 20,
+                ["th08"] = 21,
+            };
+
+            var counts = new Dictionary<string, int>();
+            var crBad = new List<string>();
+
+            foreach (var game in TrackIndex.Games)
+            {
+                foreach (var track in game.Tracks)
+                {
+                    if (!CommentIndex.TryGetEntry(game.Id, track.No, out var entry) || entry is null) continue;
+
+                    // 口径与 HasOmake 一致：任一语言非空即算有裏评
+                    if (string.IsNullOrEmpty(entry.OmakeJa) && string.IsNullOrEmpty(entry.OmakeZh)) continue;
+
+                    counts[game.Id] = counts.TryGetValue(game.Id, out var c) ? c + 1 : 1;
+
+                    if ((entry.OmakeJa ?? "").Contains('\r') || (entry.OmakeZh ?? "").Contains('\r'))
+                        crBad.Add($"{game.Id}#{track.No}");
+                }
+            }
+
+            var wrong = new List<string>();
+            foreach (var (gid, want) in expect)
+            {
+                int got = counts.TryGetValue(gid, out var c) ? c : 0;
+                if (got != want) wrong.Add($"{gid}={got}（期望 {want}）");
+            }
+            // 快照必须是完整的：期望之外冒出来的作品同样算错
+            foreach (var (gid, c) in counts)
+                if (!expect.ContainsKey(gid) && c > 0)
+                    wrong.Add($"{gid}={c}（期望 0）");
+
+            bool ok = wrong.Count == 0 && crBad.Count == 0;
+
+            return new VizSelfTest.Result(Title, ok,
+                $"计数 {string.Join("、", counts.Select(kv => $"{kv.Key}={kv.Value}"))}；" +
+                $"异常 {wrong.Count} 处" + (wrong.Count > 0 ? "：" + string.Join("、", wrong) : "") +
+                $"；含 '\\r' {crBad.Count} 条");
+        }
+        catch (Exception ex)
+        {
+            return new VizSelfTest.Result(Title, false, ex.GetType().Name + "：" + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 裏评内容抽查：th06/th07/th08 各抽 #1 —— 裏评 Ja/Zh 都能取到、彼此不同、
+    /// 且与同曲**表评**不同（防「裏评字段误塞了表评内容」这类静默错配）。
+    /// HasOmake 三态：有裏评的曲 = true；无裏评作品（th09#1）= false；连表评都没有的曲（th11#18）= false。
+    /// </summary>
+    private static VizSelfTest.Result CheckOmakeContent()
+    {
+        const string Title = "裏乐评内容（三作抽查裏不同于表 / HasOmake 三态）";
+
+        try
+        {
+            var bad = new List<string>();
+
+            foreach (string gid in new[] { "th06", "th07", "th08" })
+            {
+                bool ja = CommentIndex.TryGetOmakeComment(gid, 1, CommentLanguage.Ja, out var jaText);
+                bool zh = CommentIndex.TryGetOmakeComment(gid, 1, CommentLanguage.Zh, out var zhText);
+                CommentIndex.TryGetComment(gid, 1, CommentLanguage.Ja, out var omote);
+
+                if (!ja || !zh) { bad.Add($"{gid}#1 裏评缺语言"); continue; }
+                if (jaText == zhText) bad.Add($"{gid}#1 裏评 Ja=Zh（疑似复制）");
+                if (jaText == omote) bad.Add($"{gid}#1 裏评与表评相同（疑似塞错字段）");
+            }
+
+            bool has = CommentIndex.HasOmake("th06", 1);
+            bool noGame = !CommentIndex.HasOmake("th09", 1);
+            bool noTrack = !CommentIndex.HasOmake("th11", 18);
+
+            bool ok = bad.Count == 0 && has && noGame && noTrack;
+
+            return new VizSelfTest.Result(Title, ok,
+                $"三作抽查异常 {bad.Count} 处" + (bad.Count > 0 ? "：" + string.Join("、", bad) : "") +
+                $"；HasOmake：th06#1={has}、th09#1(无裏评作品)={noGame}、th11#18(无表评曲)={noTrack}");
         }
         catch (Exception ex)
         {

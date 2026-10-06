@@ -1,5 +1,9 @@
-﻿using System.Windows;
+﻿using System.Globalization;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using ThbgmPlayer.Audio;
 using ThbgmPlayer.Core;
@@ -445,9 +449,7 @@ public partial class MainWindow : Window
                 NowPlayingDetail.Text = "—";
                 UpdateVizCover(null);      // 什么都没在放 → 封面退回占位
                 Waveform.SetTrack(null, false);   // 波形同理（别留着上一首的形状；无峰值时标记参数无意义）
-                CommentBox.Text = string.Empty;   // 乐评同理：整列收起，别留上一首正文
-                CommentBox.Visibility = Visibility.Collapsed;
-                CommentColumn.Width = new GridLength(0);
+                ClearComment();            // 乐评同理：整列收起 + 表/裏状态归零，别留上一首正文
             }
             // 可点性跟播放走、不跟选中走：清空选中不该误伤正在播的 TH13 副版曲目
             RefreshVariantControls();
@@ -498,22 +500,137 @@ public partial class MainWindow : Window
 
     // ---------- 乐评正文 ----------
 
+    /// <summary>上一次乐评区对应的曲（"{gameId}#{trackNo}"，InvariantCulture；null = 已清场）。键不同 = 换曲。</summary>
+    private string? _commentKey;
+
+    /// <summary>乐评区当前曲的 gameId。null = 启动期 / 清场后 —— 两个 tab 的事件处理器据此早退。</summary>
+    private string? _commentGameId;
+
+    /// <summary>乐评区当前曲的 musicNo（与 <see cref="CommentIndex"/> 的查询口径一致）。</summary>
+    private int _commentTrackNo;
+
+    /// <summary>当前是否显示裏乐评。用户点「裏」置 true；换曲重置回表（用户 2026-10-06 拍板）。</summary>
+    private bool _showUraComment;
+
+    /// <summary>裏评按钮收起时露出的「小条」宽度（px）：按钮整体向左平移出容器、只留右端这一点。</summary>
+    private const double UraPeekPx = 5;
+
+    /// <summary>裏评按钮当前是否展开（默认收起；鼠标悬停弹出）。</summary>
+    private bool _uraExpanded;
+
     /// <summary>
     /// 换曲 / 切主副版时刷乐评区。
     ///
-    /// ⚠️ 查不到正文（原作没写 / 没这部作品）与「未播放」走同一个动作：**右栏整列收起、波形占满整行**
-    /// —— 按「隐藏该区域而非留白块」的已定口径，不留虚线框。
-    /// 语言取 <see cref="CommentIndex.CurrentLanguage"/>（现在固定 Ja；将来由设置驱动，见 CommentIndex 的注释）。
-    /// ⚠️ 恢复时的列宽必须与 XAML 的静态值**一致（1*）** —— 两处不同步的话，
-    /// 切到第二首有评论的曲子时列宽会被代码改成 2*，两栏当场变形（波形只剩 1/3）✗。
+    /// 表/裏态的归属全靠**键比较**：键变了（真正换曲）⇒ 重置为表评；键没变（光标移回正在播放行 /
+    /// 副版切换，主副共用同一条评论）⇒ 保持当前表/裏态。三个调用点零改动，自查键、不劳调用方。
+    ///
+    /// 切换按钮（UraToggle）的可见性在这里裁决：**数据驱动**（<see cref="CommentIndex.HasOmake"/>），
+    /// 不按作品白名单硬编码 —— 当前数据下只有 th06/07/08 有裏评论；将来补了数据自动出现。
+    /// 正文与列宽的落点在 <see cref="UpdateCommentText"/>（唯一动 Text / 可见性 / 列宽的地方）。
+    /// 语言取 <see cref="CommentIndex.CurrentLanguage"/>（现在固定 Ja；将来由设置驱动）。
     /// </summary>
     private void RefreshComment(string gameId, int trackNo)
     {
-        bool has = CommentIndex.TryGetComment(gameId, trackNo, out var text);
+        var key = gameId + "#" + trackNo.ToString(CultureInfo.InvariantCulture);
+        if (_commentKey != key) _showUraComment = false;   // 🔑 每曲重置为表评
+        _commentKey = key;
+        _commentGameId = gameId;
+        _commentTrackNo = trackNo;
+
+        bool hasOmake = CommentIndex.HasOmake(gameId, trackNo);
+        if (!hasOmake) _showUraComment = false;            // 防御：裏态只可能在有裏评的曲上成立
+
+        UraToggle.Visibility = hasOmake ? Visibility.Visible : Visibility.Collapsed;
+
+        // 程序化同步按钮态：值没变时 WPF 不触发 Changed；变了则事件自己会走 UpdateCommentText，
+        // 下面再直刷一次与那次幂等重复、无害 —— 但保证「事件没走」时（同键重查）正文也刷新。
+        UraToggle.IsChecked = _showUraComment;
+        SetUraExpanded(false);   // 换曲 / 重查：按钮收回小条态
+
+        UpdateCommentText();
+    }
+
+    /// <summary>
+    /// 把当前表/裏态落到乐评区 —— 全项目唯一一处动 CommentBox.Text / CommentPane 可见性 / 列宽。
+    ///
+    /// ⚠️ 查不到正文（原作没写 / 没这部作品 / 裏态防御回落）与「未播放」走同一个动作：
+    /// **右栏整列收起、波形占满整行** —— 按「隐藏该区域而非留白块」的已定口径，不留虚线框。
+    /// ⚠️ 恢复时的列宽必须与 XAML 的静态值**一致（1*）** —— 两处不同步的话，
+    /// 切到第二首有评论的曲子时列宽会被代码改成 2*，两栏当场变形（波形只剩 1/3）✗。
+    /// </summary>
+    private void UpdateCommentText()
+    {
+        if (_commentGameId is null) return;   // 启动期 / 清场后（tab 事件的 null 守卫兜到这里）
+
+        // 裏态但查不到裏评时自然回落表评 —— RefreshComment 的防御已保证不会进这个分支，这里双保险。
+        string text;
+        bool has = _showUraComment
+            ? CommentIndex.TryGetOmakeComment(_commentGameId, _commentTrackNo, out text)
+            : CommentIndex.TryGetComment(_commentGameId, _commentTrackNo, out text);
 
         CommentBox.Text = has ? text : string.Empty;
-        CommentBox.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        CommentPane.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
         CommentColumn.Width = has ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+    }
+
+    /// <summary>「裏音楽コメント」切换按钮：Checked / Unchecked 共用本处理器（读 IsChecked 取终态）。
+    /// 高亮 = 显示裏评，灭 = 表评。XAML 里不预置 IsChecked ⇒ InitializeComponent 期不触发；
+    /// _commentGameId 守卫仍保留，防御将来有人在 XAML 里预置选中态。</summary>
+    private void UraToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        _showUraComment = UraToggle.IsChecked == true;
+        if (_commentGameId is not null) UpdateCommentText();
+    }
+
+    /// <summary>是否允许弹出裏评按钮：正文有选中文本（用户在复制）或鼠标左键正按着（拖选中）时不弹。
+    /// 用户 2026-10-06 定：复制文本时鼠标经过按钮位置也不许弹出来挡字。</summary>
+    private bool UraCanExpand =>
+        CommentBox.SelectionLength == 0 && Mouse.LeftButton != MouseButtonState.Pressed;
+
+    /// <summary>裏评按钮滑出 / 收回：向左平移（RenderTransform），收起时只露右端 UraPeekPx 一小条。
+    /// 平移出 CommentPane 的部分靠它的 ClipToBounds 裁掉，不会画到波形区上。</summary>
+    private void SetUraExpanded(bool expand)
+    {
+        if (_uraExpanded == expand) return;
+        _uraExpanded = expand;
+
+        double width = UraToggle.ActualWidth;
+        if (width <= 0) return;   // 尚未渲染（无实际宽度）：不动，首次悬停时再滑
+
+        var anim = new DoubleAnimation(expand ? 0 : -(width - UraPeekPx),
+                                       TimeSpan.FromMilliseconds(120));
+        UraTranslate.BeginAnimation(TranslateTransform.XProperty, anim);
+    }
+
+    private void UraToggle_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (UraCanExpand) SetUraExpanded(true);
+    }
+
+    private void UraToggle_MouseLeave(object sender, MouseEventArgs e) => SetUraExpanded(false);
+
+    /// <summary>正文里开始选中文本（拖选 / 新选择）⇒ 按钮立刻收回：复制场景不能被按钮挡住。</summary>
+    private void CommentBox_SelectionChanged(object sender, RoutedEventArgs e)
+    {
+        if (_uraExpanded && CommentBox.SelectionLength > 0) SetUraExpanded(false);
+    }
+
+    /// <summary>
+    /// 清场（无选中且未播放）：正文、切换按钮、列宽全收，状态字段归零。
+    /// 键置 null ⇒ 停止后再播同一首也算新一次播放、回表评（「每曲重置」的精神）。
+    /// </summary>
+    private void ClearComment()
+    {
+        _commentKey = null;
+        _commentGameId = null;
+        _commentTrackNo = 0;
+        _showUraComment = false;
+        SetUraExpanded(false);
+
+        CommentBox.Text = string.Empty;
+        CommentPane.Visibility = Visibility.Collapsed;
+        UraToggle.Visibility = Visibility.Collapsed;
+        CommentColumn.Width = new GridLength(0);
     }
 
     // ---------- 整轨波形 ----------
