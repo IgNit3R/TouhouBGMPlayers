@@ -579,6 +579,8 @@ internal static class WaveformSelfTest
     ///
     /// ⚠️ 四件都只用**相对比较**（跟"没有波形时"比、跟自己挪一格后比）——
     /// 因为自检跑的时候主题资源可能还没合并，绝对颜色不可依赖（会走兜底色）。
+    /// 明暗**方向**类断言（播放头列）随主题色表现算 —— 自检在 ThemeManager.Initialize
+    /// 之后跑，色表一定在；硬编码方向的话换一套主题这里必红（2026-10-07 浅色主题踩过）。
     /// </summary>
     private static VizSelfTest.Result CheckRender()
     {
@@ -626,6 +628,16 @@ internal static class WaveformSelfTest
             long headBright = ColumnBrightness(withWave, W, headX, H);
             long otherBright = ColumnBrightness(withWave, W, otherX, H);
 
+            // 播放头列 vs 波形列的明暗**方向**必须与主题色表一致：
+            // 播放头是 Text 色、波形是 VizBar 色 —— 深色里 Text 亮于波形（"更亮"），浅色里反转。
+            // ⚠️ 不硬编码方向（同 CheckGridRender 的教训：硬编码的话换一套主题这里必红，
+            //    2026-10-07 引入浅色主题时实红过一次）。期望方向从主题色表现算。
+            //    主题若把播放头色调得与波形色明度过近，方向判别失效 ⇒ 这里红 ——
+            //    那是"该主题下播放头不可辨"的设计问题，自检拦下来是对的。
+            long lText = Lum(ThemeColor("Text"));
+            long lVizBar = Lum(ThemeColor("VizBar"));
+            bool headDirection = (headBright > otherBright) == (lText > lVizBar);
+
             // 循环标记：**必须在波形之上**。
             // ⚠️ 所以专挑波形**占满的中间那一行**来验 —— 早期标记画在波形下面，满幅时整条被盖住；
             // 只去查波形上方的留白是**验不出来**的（那里本来就没东西挡）。
@@ -652,7 +664,8 @@ internal static class WaveformSelfTest
             {
                 $"波形覆盖（与无波形比）：{blankDiff}/{W * H} 像素不同（门槛 {W * H / 5}）",
                 $"挪播放头后变化：{movedDiff} 像素（期望 ≤ {5 * H}，即只动那两列，不是整块重画）",
-                $"播放头列亮度 {headBright} vs 普通列 {otherBright}（期望更亮）",
+                $"播放头列亮度 {headBright} vs 普通列 {otherBright}" +
+                $"（期望{(lText > lVizBar ? "更亮" : "更暗")}，随主题阶梯；方向一致 = {headDirection}）",
                 $"中间行有波形 = {waveAtMid}（前提）；标记在中间行可见 = {markOverWave}（画在波形之上）",
                 $"标记列像素 {markPx:X8}（R{(markPx >> 16 & 0xFF)} vs B{markPx & 0xFF}）" +
                 $" vs 对照列 {Px(withWave, W, markRef, midY):X8}；偏红 = {markRed}（期望 True，未被混灰）",
@@ -660,7 +673,7 @@ internal static class WaveformSelfTest
 
             ok &= blankDiff > W * H / 5;
             ok &= movedDiff <= 5 * H;
-            ok &= headBright > otherBright;
+            ok &= headDirection;
             ok &= waveAtMid && markOverWave && markRed;
 
             return new VizSelfTest.Result(Title, ok, string.Join("；", rows));
