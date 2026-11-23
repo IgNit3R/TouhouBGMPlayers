@@ -52,7 +52,7 @@
     <PackageReference Include="VorbisPizza" Version="1.4.2" />
     <!-- 新典（TH06NC）BGM 解码：纯托管 Opus 实现（BSD-3），不含 Ogg 容器解析，
          正好匹配新典的自定义「40 字节头 + N×488 记录」容器（内为裸 Opus 包）。 -->
-    <PackageReference Include="Concentus" Version="2.2.2" />
+    <PackageReference Include="Concentus" Version="2.2.3" />
   </ItemGroup>
 
   <ItemGroup>
